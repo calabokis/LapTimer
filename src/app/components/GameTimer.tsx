@@ -25,8 +25,14 @@ export default function GameTimer({
 }: { 
   onReset: () => void 
 }) {
+  // Running state trackers
   const [isRunning, setIsRunning] = useState(false)
-  const [elapsedTime, setElapsedTime] = useState(0)
+  
+  // Time tracking states
+  const [totalGameTime, setTotalGameTime] = useState(0)
+  const [actualPlayingTime, setActualPlayingTime] = useState(0)
+  const [lastStartTime, setLastStartTime] = useState<number | null>(null)
+  
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
   
@@ -49,13 +55,23 @@ export default function GameTimer({
     }
   }, [onReset])
 
-  // Timer effect
+  // Total game time and actual playing time tracking effect
   useEffect(() => {
     let intervalId: NodeJS.Timeout
 
     if (isRunning) {
+      // Record the start time when timer begins
+      const startTime = Date.now()
+      setLastStartTime(startTime)
+
       intervalId = setInterval(() => {
-        setElapsedTime(prev => prev + 1000)
+        const currentTime = Date.now()
+        
+        // Increment total game time
+        setTotalGameTime(prev => prev + 1000)
+        
+        // Increment actual playing time
+        setActualPlayingTime(prev => prev + 1000)
       }, 1000)
     }
 
@@ -82,12 +98,11 @@ export default function GameTimer({
     setTurns(prev => [...prev, {
       playerName: currentPlayer.name,
       side: currentPlayer.side,
-      duration: elapsedTime,
+      duration: actualPlayingTime,
       timestamp: Date.now()
     }])
 
-    // Reset timer and move to next player
-    setElapsedTime(0)
+    // Move to next player
     setCurrentPlayerIndex((prev) => (prev + 1) % players.length)
   }
 
@@ -116,10 +131,21 @@ export default function GameTimer({
           <p className="text-gray-600">{location}</p>
         </div>
 
-        {/* Timer Display */}
+        {/* Time Displays */}
         <div className="p-8">
-          <div className="text-center text-6xl font-mono font-bold mb-8">
-            {formatTime(elapsedTime)}
+          <div className="flex justify-between mb-8">
+            <div className="text-center flex-1">
+              <div className="text-sm text-gray-600">Total Game Time</div>
+              <div className="text-4xl font-mono font-bold">
+                {formatTime(totalGameTime)}
+              </div>
+            </div>
+            <div className="text-center flex-1">
+              <div className="text-sm text-gray-600">Playing Time</div>
+              <div className="text-4xl font-mono font-bold">
+                {formatTime(actualPlayingTime)}
+              </div>
+            </div>
           </div>
 
           {/* Current Player */}
