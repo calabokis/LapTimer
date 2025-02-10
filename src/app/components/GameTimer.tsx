@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface Player {
   name: string
@@ -32,6 +32,10 @@ export default function GameTimer({
   const [totalGameTime, setTotalGameTime] = useState(0)
   const [actualPlayingTime, setActualPlayingTime] = useState(0)
   
+  // Refs to track time consistently
+  const startTimeRef = useRef<number | null>(null)
+  const totalGameStartRef = useRef<number | null>(null)
+
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
   
@@ -48,21 +52,44 @@ export default function GameTimer({
       setGameName(gameName)
       setLocation(location)
       setPlayers(players)
+      
+      // Start total game time tracking immediately
+      totalGameStartRef.current = Date.now()
     } else {
       // Call reset if no game setup exists
       onReset()
     }
   }, [onReset])
 
-  // Total game time and actual playing time tracking effect
+  // Total game time tracking effect
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout
+
+    // Always track total game time
+    if (totalGameStartRef.current) {
+      intervalId = setInterval(() => {
+        // Calculate total game time from start
+        const currentTotalTime = Date.now() - totalGameStartRef.current!
+        setTotalGameTime(currentTotalTime)
+      }, 1000)
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [])
+
+  // Actual playing time tracking effect
   useEffect(() => {
     let intervalId: NodeJS.Timeout
 
     if (isRunning) {
+      // Record start time when timer begins
+      startTimeRef.current = Date.now()
+
       intervalId = setInterval(() => {
-        // Increment total game time
-        setTotalGameTime(prev => prev + 1000)
-        
         // Increment actual playing time
         setActualPlayingTime(prev => prev + 1000)
       }, 1000)
