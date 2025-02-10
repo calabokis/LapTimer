@@ -1,6 +1,6 @@
 'use client'
 
-import GameApp from './GameApp'
+import GameApp from './components/GameApp'
 
 export default function Page() {
   return <GameApp />
