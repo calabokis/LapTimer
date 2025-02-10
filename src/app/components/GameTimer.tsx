@@ -31,7 +31,6 @@ export default function GameTimer({
   // Time tracking states
   const [totalGameTime, setTotalGameTime] = useState(0)
   const [actualPlayingTime, setActualPlayingTime] = useState(0)
-  const [lastStartTime, setLastStartTime] = useState<number | null>(null)
   
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -60,13 +59,7 @@ export default function GameTimer({
     let intervalId: NodeJS.Timeout
 
     if (isRunning) {
-      // Record the start time when timer begins
-      const startTime = Date.now()
-      setLastStartTime(startTime)
-
       intervalId = setInterval(() => {
-        const currentTime = Date.now()
-        
         // Increment total game time
         setTotalGameTime(prev => prev + 1000)
         
