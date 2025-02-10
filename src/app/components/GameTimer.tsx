@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface Player {
   name: string
@@ -25,8 +25,17 @@ export default function GameTimer({
 }: { 
   onReset: () => void 
 }) {
+  // Running state trackers
   const [isRunning, setIsRunning] = useState(false)
-  const [elapsedTime, setElapsedTime] = useState(0)
+  
+  // Time tracking states
+  const [totalGameTime, setTotalGameTime] = useState(0)
+  const [actualPlayingTime, setActualPlayingTime] = useState(0)
+  
+  // Refs to track time consistently
+  const startTimeRef = useRef<number | null>(null)
+  const totalGameStartRef = useRef<number | null>(null)
+
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
   
@@ -43,19 +52,46 @@ export default function GameTimer({
       setGameName(gameName)
       setLocation(location)
       setPlayers(players)
+      
+      // Start total game time tracking immediately
+      totalGameStartRef.current = Date.now()
     } else {
       // Call reset if no game setup exists
       onReset()
     }
   }, [onReset])
 
-  // Timer effect
+  // Total game time tracking effect
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout
+
+    // Always track total game time
+    if (totalGameStartRef.current) {
+      intervalId = setInterval(() => {
+        // Calculate total game time from start
+        const currentTotalTime = Date.now() - totalGameStartRef.current!
+        setTotalGameTime(currentTotalTime)
+      }, 1000)
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [])
+
+  // Actual playing time tracking effect
   useEffect(() => {
     let intervalId: NodeJS.Timeout
 
     if (isRunning) {
+      // Record start time when timer begins
+      startTimeRef.current = Date.now()
+
       intervalId = setInterval(() => {
-        setElapsedTime(prev => prev + 1000)
+        // Increment actual playing time
+        setActualPlayingTime(prev => prev + 1000)
       }, 1000)
     }
 
@@ -82,12 +118,11 @@ export default function GameTimer({
     setTurns(prev => [...prev, {
       playerName: currentPlayer.name,
       side: currentPlayer.side,
-      duration: elapsedTime,
+      duration: actualPlayingTime,
       timestamp: Date.now()
     }])
 
-    // Reset timer and move to next player
-    setElapsedTime(0)
+    // Move to next player
     setCurrentPlayerIndex((prev) => (prev + 1) % players.length)
   }
 
@@ -116,10 +151,21 @@ export default function GameTimer({
           <p className="text-gray-600">{location}</p>
         </div>
 
-        {/* Timer Display */}
+        {/* Time Displays */}
         <div className="p-8">
-          <div className="text-center text-6xl font-mono font-bold mb-8">
-            {formatTime(elapsedTime)}
+          <div className="flex justify-between mb-8">
+            <div className="text-center flex-1">
+              <div className="text-sm text-gray-600">Total Game Time</div>
+              <div className="text-4xl font-mono font-bold">
+                {formatTime(totalGameTime)}
+              </div>
+            </div>
+            <div className="text-center flex-1">
+              <div className="text-sm text-gray-600">Playing Time</div>
+              <div className="text-4xl font-mono font-bold">
+                {formatTime(actualPlayingTime)}
+              </div>
+            </div>
           </div>
 
           {/* Current Player */}
