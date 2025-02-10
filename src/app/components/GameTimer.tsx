@@ -3,29 +3,51 @@
 import { useState, useEffect } from 'react'
 
 interface Player {
-  id: number
   name: string
+  side?: string
 }
 
 interface Turn {
-  playerId: number
   playerName: string
+  side?: string
   duration: number
   timestamp: number
 }
 
-export default function GameTimer() {
+interface GameSetup {
+  gameName: string
+  location: string
+  players: Player[]
+}
+
+export default function GameTimer({ 
+  onReset 
+}: { 
+  onReset: () => void 
+}) {
   const [isRunning, setIsRunning] = useState(false)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
   
-  // Sample players - later we'll make this dynamic
-  const [players] = useState<Player[]>([
-    { id: 1, name: "Player 1" },
-    { id: 2, name: "Player 2" },
-    { id: 3, name: "Player 3" }
-  ])
+  // Game setup state
+  const [gameName, setGameName] = useState('')
+  const [location, setLocation] = useState('')
+  const [players, setPlayers] = useState<Player[]>([])
+
+  // Load game setup from localStorage on component mount
+  useEffect(() => {
+    const gameSetup = localStorage.getItem('gameSetup')
+    if (gameSetup) {
+      const { gameName, location, players } = JSON.parse(gameSetup) as GameSetup
+      setGameName(gameName)
+      setLocation(location)
+      setPlayers(players)
+    } else {
+      // Call reset if no game setup exists
+      onReset()
+    }
+  }, [onReset])
 
   // Timer effect
   useEffect(() => {
@@ -58,8 +80,8 @@ export default function GameTimer() {
     // Record current turn
     const currentPlayer = players[currentPlayerIndex]
     setTurns(prev => [...prev, {
-      playerId: currentPlayer.id,
       playerName: currentPlayer.name,
+      side: currentPlayer.side,
       duration: elapsedTime,
       timestamp: Date.now()
     }])
@@ -74,9 +96,26 @@ export default function GameTimer() {
     setIsRunning(prev => !prev)
   }
 
+  // Reset game and go back to setup
+  const resetGame = () => {
+    localStorage.removeItem('gameSetup')
+    onReset()
+  }
+
+  // If players are not loaded, show nothing
+  if (players.length === 0) {
+    return null
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
+        {/* Game Info */}
+        <div className="p-4 bg-gray-50 text-center">
+          <h1 className="text-xl font-bold">{gameName}</h1>
+          <p className="text-gray-600">{location}</p>
+        </div>
+
         {/* Timer Display */}
         <div className="p-8">
           <div className="text-center text-6xl font-mono font-bold mb-8">
@@ -86,6 +125,11 @@ export default function GameTimer() {
           {/* Current Player */}
           <div className="text-center text-xl mb-8">
             Current Player: {players[currentPlayerIndex].name}
+            {players[currentPlayerIndex].side && 
+              <span className="ml-2 text-gray-600">
+                (Side: {players[currentPlayerIndex].side})
+              </span>
+            }
           </div>
 
           {/* Controls */}
@@ -112,18 +156,32 @@ export default function GameTimer() {
             >
               Next Turn
             </button>
+
+            <button
+              onClick={resetGame}
+              className="w-full py-4 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white font-bold text-xl"
+            >
+              Reset Game
+            </button>
           </div>
 
           {/* Turn History */}
           <div className="mt-8">
             <h2 className="text-xl font-bold mb-4">Turn History</h2>
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-48 overflow-y-auto">
               {turns.map((turn, index) => (
                 <div 
                   key={index}
-                  className="p-3 bg-gray-50 rounded-lg flex justify-between"
+                  className="p-3 bg-gray-50 rounded-lg flex justify-between items-center"
                 >
-                  <span>{turn.playerName}</span>
+                  <div>
+                    <span>{turn.playerName}</span>
+                    {turn.side && (
+                      <span className="ml-2 text-xs text-gray-600">
+                        ({turn.side})
+                      </span>
+                    )}
+                  </div>
                   <span className="font-mono">{formatTime(turn.duration)}</span>
                 </div>
               ))}

@@ -1,5 +1,7 @@
-import GameTimer from './components/GameTimer'
+'use client'
 
-export default function Home() {
-  return <GameTimer />
+import GameApp from './GameApp'
+
+export default function Page() {
+  return <GameApp />
 }
