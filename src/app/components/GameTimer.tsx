@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 
 interface Player {
   name: string
@@ -14,6 +14,13 @@ interface Turn {
   timestamp: number
 }
 
+interface PlayerStats {
+  longestTurn: number
+  averageTurn: number
+  totalTime: number
+  turnCount: number
+}
+
 interface GameSetup {
   gameName: string
   location: string
@@ -25,17 +32,8 @@ export default function GameTimer({
 }: { 
   onReset: () => void 
 }) {
-  // Running state trackers
   const [isRunning, setIsRunning] = useState(false)
-  
-  // Time tracking states
-  const [totalGameTime, setTotalGameTime] = useState(0)
-  const [actualPlayingTime, setActualPlayingTime] = useState(0)
-  
-  // Refs to track time consistently
-  const startTimeRef = useRef<number | null>(null)
-  const totalGameStartRef = useRef<number | null>(null)
-
+  const [elapsedTime, setElapsedTime] = useState(0)
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
   
@@ -43,6 +41,32 @@ export default function GameTimer({
   const [gameName, setGameName] = useState('')
   const [location, setLocation] = useState('')
   const [players, setPlayers] = useState<Player[]>([])
+
+  // Calculate player statistics
+  const playerStats = useMemo(() => {
+    const stats: Record<string, PlayerStats> = {}
+    
+    // Initialize stats for all players
+    players.forEach(player => {
+      stats[player.name] = {
+        longestTurn: 0,
+        averageTurn: 0,
+        totalTime: 0,
+        turnCount: 0
+      }
+    })
+
+    // Calculate stats from turns
+    turns.forEach(turn => {
+      const playerStat = stats[turn.playerName]
+      playerStat.longestTurn = Math.max(playerStat.longestTurn, turn.duration)
+      playerStat.totalTime += turn.duration
+      playerStat.turnCount += 1
+      playerStat.averageTurn = Math.round(playerStat.totalTime / playerStat.turnCount)
+    })
+
+    return stats
+  }, [turns, players])
 
   // Load game setup from localStorage on component mount
   useEffect(() => {
@@ -52,46 +76,18 @@ export default function GameTimer({
       setGameName(gameName)
       setLocation(location)
       setPlayers(players)
-      
-      // Start total game time tracking immediately
-      totalGameStartRef.current = Date.now()
     } else {
-      // Call reset if no game setup exists
       onReset()
     }
   }, [onReset])
 
-  // Total game time tracking effect
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout
-
-    // Always track total game time
-    if (totalGameStartRef.current) {
-      intervalId = setInterval(() => {
-        // Calculate total game time from start
-        const currentTotalTime = Date.now() - totalGameStartRef.current!
-        setTotalGameTime(currentTotalTime)
-      }, 1000)
-    }
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId)
-      }
-    }
-  }, [])
-
-  // Actual playing time tracking effect
+  // Timer effect
   useEffect(() => {
     let intervalId: NodeJS.Timeout
 
     if (isRunning) {
-      // Record start time when timer begins
-      startTimeRef.current = Date.now()
-
       intervalId = setInterval(() => {
-        // Increment actual playing time
-        setActualPlayingTime(prev => prev + 1000)
+        setElapsedTime(prev => prev + 1000)
       }, 1000)
     }
 
@@ -118,11 +114,12 @@ export default function GameTimer({
     setTurns(prev => [...prev, {
       playerName: currentPlayer.name,
       side: currentPlayer.side,
-      duration: actualPlayingTime,
+      duration: elapsedTime,
       timestamp: Date.now()
     }])
 
-    // Move to next player
+    // Reset timer and move to next player
+    setElapsedTime(0)
     setCurrentPlayerIndex((prev) => (prev + 1) % players.length)
   }
 
@@ -151,21 +148,10 @@ export default function GameTimer({
           <p className="text-gray-600">{location}</p>
         </div>
 
-        {/* Time Displays */}
+        {/* Timer Display */}
         <div className="p-8">
-          <div className="flex justify-between mb-8">
-            <div className="text-center flex-1">
-              <div className="text-sm text-gray-600">Total Game Time</div>
-              <div className="text-4xl font-mono font-bold">
-                {formatTime(totalGameTime)}
-              </div>
-            </div>
-            <div className="text-center flex-1">
-              <div className="text-sm text-gray-600">Playing Time</div>
-              <div className="text-4xl font-mono font-bold">
-                {formatTime(actualPlayingTime)}
-              </div>
-            </div>
+          <div className="text-center text-6xl font-mono font-bold mb-8">
+            {formatTime(elapsedTime)}
           </div>
 
           {/* Current Player */}
@@ -209,6 +195,57 @@ export default function GameTimer({
             >
               Reset Game
             </button>
+          </div>
+
+          {/* Player Statistics */}
+          <div className="mt-8">
+            <h2 className="text-xl font-bold mb-4">Player Statistics</h2>
+            <div className="space-y-4">
+              {players.map(player => {
+                const stats = playerStats[player.name]
+                return (
+                  <div 
+                    key={player.name}
+                    className="p-4 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-bold">{player.name}</span>
+                      {player.side && (
+                        <span className="text-sm text-gray-600">
+                          ({player.side})
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-gray-600">Longest Turn:</span>
+                        <span className="ml-2 font-mono">
+                          {formatTime(stats.longestTurn)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Average Turn:</span>
+                        <span className="ml-2 font-mono">
+                          {formatTime(stats.averageTurn)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Total Time:</span>
+                        <span className="ml-2 font-mono">
+                          {formatTime(stats.totalTime)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Turn Count:</span>
+                        <span className="ml-2 font-mono">
+                          {stats.turnCount}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           {/* Turn History */}
