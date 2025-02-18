@@ -1,26 +1,50 @@
 'use client'
 
-import React, { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { Session } from '@supabase/supabase-js'
 import GameSetup from './GameSetup'
 import GameTimer from './GameTimer'
+import Auth from './Auth'
 
 export default function GameApp() {
-  const [isGameStarted, setIsGameStarted] = useState(false)
+  const [session, setSession] = useState<Session | null>(null)
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null)
 
-  const handleGameStart = () => {
-    setIsGameStarted(true)
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+    })
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleGameStart = (gameId: string) => {
+    setCurrentGameId(gameId)
   }
 
   const handleGameReset = () => {
-    setIsGameStarted(false)
+    setCurrentGameId(null)
+  }
+
+  if (!session) {
+    return <Auth />
   }
 
   return (
     <div>
-      {!isGameStarted ? (
+      {!currentGameId ? (
         <GameSetup onGameStart={handleGameStart} />
       ) : (
-        <GameTimer onReset={handleGameReset} />
+        <GameTimer gameId={currentGameId} onReset={handleGameReset} />
       )}
     </div>
   )
