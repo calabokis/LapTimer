@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { supabase } from '@/lib/supabase'
 
 interface Player {
+  id: string
   name: string
   side?: string
 }
@@ -21,31 +23,62 @@ interface PlayerStats {
   turnCount: number
 }
 
-interface GameSetup {
-  gameName: string
-  location: string
-  players: Player[]
+interface GameTimerProps {
+  gameId: string
+  onReset: () => void
 }
 
-export default function GameTimer({ 
-  onReset 
-}: { 
-  onReset: () => void 
-}) {
+export default function GameTimer({ gameId, onReset }: GameTimerProps) {
   const [isRunning, setIsRunning] = useState(false)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
-  
+
   // Game setup state
   const [gameName, setGameName] = useState('')
   const [location, setLocation] = useState('')
   const [players, setPlayers] = useState<Player[]>([])
 
+  // Load game data from Supabase when gameId changes
+  useEffect(() => {
+    const loadGameData = async () => {
+      try {
+        const { data: gameData, error: gameError } = await supabase
+          .from('games')
+          .select('*')
+          .eq('id', gameId)
+          .single()
+
+        if (gameError) throw gameError
+
+        if (gameData) {
+          setGameName(gameData.name)
+          setLocation(gameData.location)
+        }
+
+        const { data: playersData, error: playersError } = await supabase
+          .from('players')
+          .select('*')
+          .eq('game_id', gameId)
+
+        if (playersError) throw playersError
+
+        if (playersData) {
+          setPlayers(playersData)
+        }
+      } catch (error) {
+        console.error('Error loading game data:', error)
+        alert('Failed to load game data')
+      }
+    }
+
+    loadGameData()
+  }, [gameId])
+
   // Calculate player statistics
   const playerStats = useMemo(() => {
     const stats: Record<string, PlayerStats> = {}
-    
+
     // Initialize stats for all players
     players.forEach(player => {
       stats[player.name] = {
@@ -67,19 +100,6 @@ export default function GameTimer({
 
     return stats
   }, [turns, players])
-
-  // Load game setup from localStorage on component mount
-  useEffect(() => {
-    const gameSetup = localStorage.getItem('gameSetup')
-    if (gameSetup) {
-      const { gameName, location, players } = JSON.parse(gameSetup) as GameSetup
-      setGameName(gameName)
-      setLocation(location)
-      setPlayers(players)
-    } else {
-      onReset()
-    }
-  }, [onReset])
 
   // Timer effect
   useEffect(() => {
@@ -108,15 +128,36 @@ export default function GameTimer({
   }
 
   // Handle next turn
-  const handleNextTurn = () => {
-    // Record current turn
+  const handleNextTurn = async () => {
+    if (!players[currentPlayerIndex]) return
+
     const currentPlayer = players[currentPlayerIndex]
-    setTurns(prev => [...prev, {
+    const turn = {
       playerName: currentPlayer.name,
       side: currentPlayer.side,
       duration: elapsedTime,
       timestamp: Date.now()
-    }])
+    }
+
+    // Add turn to local state
+    setTurns(prev => [...prev, turn])
+
+    // Save turn to Supabase
+    try {
+      const { error } = await supabase
+        .from('turns')
+        .insert({
+          game_id: gameId,
+          player_id: currentPlayer.id,
+          duration: elapsedTime,
+          timestamp: new Date().toISOString()
+        })
+
+      if (error) throw error
+    } catch (error) {
+      console.error('Error saving turn:', error)
+      alert('Failed to save turn data')
+    }
 
     // Reset timer and move to next player
     setElapsedTime(0)
@@ -128,15 +169,9 @@ export default function GameTimer({
     setIsRunning(prev => !prev)
   }
 
-  // Reset game and go back to setup
-  const resetGame = () => {
-    localStorage.removeItem('gameSetup')
-    onReset()
-  }
-
-  // If players are not loaded, show nothing
+  // If no players are loaded yet, show loading state
   if (players.length === 0) {
-    return null
+    return <div className="flex justify-center items-center min-h-screen">Loading...</div>
   }
 
   return (
@@ -157,7 +192,7 @@ export default function GameTimer({
           {/* Current Player */}
           <div className="text-center text-xl mb-8">
             Current Player: {players[currentPlayerIndex].name}
-            {players[currentPlayerIndex].side && 
+            {players[currentPlayerIndex].side &&
               <span className="ml-2 text-gray-600">
                 (Side: {players[currentPlayerIndex].side})
               </span>
@@ -169,8 +204,8 @@ export default function GameTimer({
             <button
               onClick={toggleTimer}
               className={`w-full py-4 rounded-lg text-white font-bold text-xl
-                ${isRunning 
-                  ? 'bg-red-500 hover:bg-red-600' 
+                ${isRunning
+                  ? 'bg-red-500 hover:bg-red-600'
                   : 'bg-green-500 hover:bg-green-600'
                 }`}
             >
@@ -190,7 +225,7 @@ export default function GameTimer({
             </button>
 
             <button
-              onClick={resetGame}
+              onClick={onReset}
               className="w-full py-4 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white font-bold text-xl"
             >
               Reset Game
@@ -204,8 +239,8 @@ export default function GameTimer({
               {players.map(player => {
                 const stats = playerStats[player.name]
                 return (
-                  <div 
-                    key={player.name}
+                  <div
+                    key={player.id}
                     className="p-4 bg-gray-50 rounded-lg"
                   >
                     <div className="flex justify-between items-center mb-2">
@@ -253,7 +288,7 @@ export default function GameTimer({
             <h2 className="text-xl font-bold mb-4">Turn History</h2>
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {turns.map((turn, index) => (
-                <div 
+                <div
                   key={index}
                   className="p-3 bg-gray-50 rounded-lg flex justify-between items-center"
                 >
