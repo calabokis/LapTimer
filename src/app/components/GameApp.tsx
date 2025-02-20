@@ -6,7 +6,6 @@ import { Session } from '@supabase/supabase-js'
 import GameSetup from './GameSetup'
 import GameTimer from './GameTimer'
 import Auth from './Auth'
-import type { Game } from '@/lib/supabase'
 
 interface PlayerSetup {
   name: string
