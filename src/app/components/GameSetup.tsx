@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { AlertCircle } from 'lucide-react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 
 interface PlayerSetup {
   name: string
@@ -150,12 +148,11 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
         <h1 className="text-2xl font-bold mb-6 text-center">Game Setup</h1>
 
-        {/* Error Alert */}
+        {/* Error Message */}
         {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg">
+            {error}
+          </div>
         )}
 
         {/* Loading State */}
