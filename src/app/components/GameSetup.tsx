@@ -1,10 +1,12 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import { AlertCircle } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 
 interface PlayerSetup {
   name: string
-  side?: string
 }
 
 interface GameSetupProps {
@@ -15,23 +17,105 @@ interface GameSetupProps {
   }) => void
 }
 
-const gameTypes = [
-  { name: 'Chess', sides: ['White', 'Black'] },
-  { name: 'Monopoly', sides: [] },
-  { name: 'Risk', sides: ['North', 'South', 'East', 'West'] },
-  { name: 'Other', sides: [] }
-]
+interface FrequencyMap {
+  [key: string]: number
+}
 
 export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [gameName, setGameName] = useState('')
   const [location, setLocation] = useState('')
-  const [selectedGameType, setSelectedGameType] = useState('')
-  const [players, setPlayers] = useState<PlayerSetup[]>([
-    { name: '', side: '' }
-  ])
+  const [players, setPlayers] = useState<PlayerSetup[]>([{ name: '' }])
+
+  // For suggestions
+  const [commonGameNames, setCommonGameNames] = useState<string[]>([])
+  const [commonLocations, setCommonLocations] = useState<string[]>([])
+  const [commonPlayers, setCommonPlayers] = useState<string[]>([])
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Helper function to sort by frequency
+  const sortByFrequency = (items: string[], frequencyMap: FrequencyMap): string[] => {
+    return Array.from(new Set(items))
+      .sort((a, b) => (frequencyMap[b] || 0) - (frequencyMap[a] || 0))
+  }
+
+  // Fetch common games, locations and players on component mount
+  useEffect(() => {
+    const fetchUserPreferences = async () => {
+      try {
+        setError(null)
+        setIsLoadingSuggestions(true)
+
+        const { data: session, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError) throw new Error('Failed to get user session')
+
+        const user = session?.session?.user
+        if (!user) throw new Error('No user session found')
+
+        // Fetch all games for the user
+        const { data: gamesData, error: gamesError } = await supabase
+          .from('games')
+          .select('id, name, location, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (gamesError) throw new Error('Failed to fetch games data')
+
+        // Process game names
+        const gameNameFrequency: FrequencyMap = {}
+        gamesData?.forEach(game => {
+          gameNameFrequency[game.name] = (gameNameFrequency[game.name] || 0) + 1
+        })
+        const sortedGameNames = sortByFrequency(
+          gamesData?.map(game => game.name) || [],
+          gameNameFrequency
+        ).slice(0, 3)
+        setCommonGameNames(sortedGameNames)
+
+        // Process locations
+        const locationFrequency: FrequencyMap = {}
+        gamesData?.forEach(game => {
+          locationFrequency[game.location] = (locationFrequency[game.location] || 0) + 1
+        })
+        const sortedLocations = sortByFrequency(
+          gamesData?.map(game => game.location) || [],
+          locationFrequency
+        ).slice(0, 3)
+        setCommonLocations(sortedLocations)
+
+        // Fetch and process players
+        if (gamesData && gamesData.length > 0) {
+          const { data: playerData, error: playerError } = await supabase
+            .from('players')
+            .select('name, game_id')
+            .in('game_id', gamesData.map(game => game.id))
+
+          if (playerError) throw new Error('Failed to fetch players data')
+
+          const playerFrequency: FrequencyMap = {}
+          playerData?.forEach(player => {
+            playerFrequency[player.name] = (playerFrequency[player.name] || 0) + 1
+          })
+          const sortedPlayers = sortByFrequency(
+            playerData?.map(player => player.name) || [],
+            playerFrequency
+          ).slice(0, 6)
+          setCommonPlayers(sortedPlayers)
+        }
+
+      } catch (error) {
+        console.error('Error fetching user preferences:', error)
+        setError(error instanceof Error ? error.message : 'An unexpected error occurred')
+      } finally {
+        setIsLoadingSuggestions(false)
+      }
+    }
+
+    fetchUserPreferences()
+  }, [])
 
   const handleAddPlayer = () => {
-    setPlayers([...players, { name: '', side: '' }])
+    setPlayers([...players, { name: '' }])
   }
 
   const updatePlayer = (index: number, updates: Partial<PlayerSetup>) => {
@@ -42,10 +126,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     // Basic validation
     if (!gameName || !location || players.some(p => !p.name)) {
-      alert('Please fill in all required fields')
+      setError('Please fill in all required fields')
       return
     }
 
@@ -61,92 +145,94 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     onGameStart(gameSetup)
   }
 
-  const selectedGameSides = gameTypes.find(gt => gt.name === selectedGameType)?.sides || []
-
   return (
     <div className="min-h-screen bg-gray-100 p-4 flex items-center justify-center">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
         <h1 className="text-2xl font-bold mb-6 text-center">Game Setup</h1>
+
+        {/* Error Alert */}
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Loading State */}
+        {isLoadingSuggestions && (
+          <div className="text-center text-gray-500 mb-4">
+            Loading suggestions...
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Game Name Input */}
+          {/* Game Name Input with Suggestions */}
           <div>
             <label htmlFor="gameName" className="block mb-2 font-medium">
               Game Name
             </label>
-            <input
-              id="gameName"
-              type="text"
-              value={gameName}
-              onChange={(e) => setGameName(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
-              placeholder="Enter game name"
-              required
-            />
+            <div className="relative">
+              <input
+                id="gameName"
+                type="text"
+                value={gameName}
+                onChange={(e) => setGameName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+                placeholder="Enter game name"
+                list="gameNameSuggestions"
+                required
+              />
+              <datalist id="gameNameSuggestions">
+                {commonGameNames.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+            </div>
           </div>
 
-          {/* Location Input */}
+          {/* Location Input with Suggestions */}
           <div>
             <label htmlFor="location" className="block mb-2 font-medium">
               Location
             </label>
-            <input
-              id="location"
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
-              placeholder="Enter game location"
-              required
-            />
+            <div className="relative">
+              <input
+                id="location"
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+                placeholder="Enter game location"
+                list="locationSuggestions"
+                required
+              />
+              <datalist id="locationSuggestions">
+                {commonLocations.map((loc) => (
+                  <option key={loc} value={loc} />
+                ))}
+              </datalist>
+            </div>
           </div>
 
-          {/* Game Type Selection */}
-          <div>
-            <label htmlFor="gameType" className="block mb-2 font-medium">
-              Game Type
-            </label>
-            <select
-              id="gameType"
-              value={selectedGameType}
-              onChange={(e) => setSelectedGameType(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
-            >
-              <option value="">Select Game Type</option>
-              {gameTypes.map((gameType) => (
-                <option key={gameType.name} value={gameType.name}>
-                  {gameType.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Players Inputs */}
+          {/* Players Inputs with Suggestions */}
           <div>
             <label className="block mb-2 font-medium">Players</label>
             {players.map((player, index) => (
-              <div key={index} className="mb-2 flex space-x-2">
+              <div key={index} className="mb-2">
                 <input
                   type="text"
                   value={player.name}
                   onChange={(e) => updatePlayer(index, { name: e.target.value })}
-                  className="flex-grow px-3 py-2 border rounded-lg"
+                  className="w-full px-3 py-2 border rounded-lg"
                   placeholder={`Player ${index + 1} Name`}
+                  list={`playerSuggestions${index}`}
                   required
                 />
-                {selectedGameSides.length > 0 && (
-                  <select
-                    value={player.side}
-                    onChange={(e) => updatePlayer(index, { side: e.target.value })}
-                    className="px-3 py-2 border rounded-lg"
-                  >
-                    <option value="">Select Side</option>
-                    {selectedGameSides.map((side) => (
-                      <option key={side} value={side}>
-                        {side}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                <datalist id={`playerSuggestions${index}`}>
+                  {commonPlayers.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
               </div>
             ))}
             <button
