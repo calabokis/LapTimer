@@ -30,32 +30,16 @@ interface GameTimerProps {
 
 export default function GameTimer({ gameId, onReset }: GameTimerProps) {
   const [isRunning, setIsRunning] = useState(false)
-  const [elapsedTime, setElapsedTime] = useState(0)
+  const [gameTime, setGameTime] = useState(0) // Active game time
+  const [totalTime, setTotalTime] = useState(0) // Total elapsed time including pauses
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
-
-  // Game setup state
-  const [gameName, setGameName] = useState('')
-  const [location, setLocation] = useState('')
   const [players, setPlayers] = useState<Player[]>([])
 
-  // Load game data from Supabase when gameId changes
+  // Load players data from Supabase when gameId changes
   useEffect(() => {
-    const loadGameData = async () => {
+    const loadPlayers = async () => {
       try {
-        const { data: gameData, error: gameError } = await supabase
-          .from('games')
-          .select('*')
-          .eq('id', gameId)
-          .single()
-
-        if (gameError) throw gameError
-
-        if (gameData) {
-          setGameName(gameData.name)
-          setLocation(gameData.location)
-        }
-
         const { data: playersData, error: playersError } = await supabase
           .from('players')
           .select('*')
@@ -67,56 +51,36 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
           setPlayers(playersData)
         }
       } catch (error) {
-        console.error('Error loading game data:', error)
-        alert('Failed to load game data')
+        console.error('Error loading players data:', error)
+        alert('Failed to load players data')
       }
     }
 
-    loadGameData()
+    loadPlayers()
   }, [gameId])
 
-  // Calculate player statistics
-  const playerStats = useMemo(() => {
-    const stats: Record<string, PlayerStats> = {}
-
-    // Initialize stats for all players
-    players.forEach(player => {
-      stats[player.name] = {
-        longestTurn: 0,
-        averageTurn: 0,
-        totalTime: 0,
-        turnCount: 0
-      }
-    })
-
-    // Calculate stats from turns
-    turns.forEach(turn => {
-      const playerStat = stats[turn.playerName]
-      playerStat.longestTurn = Math.max(playerStat.longestTurn, turn.duration)
-      playerStat.totalTime += turn.duration
-      playerStat.turnCount += 1
-      playerStat.averageTurn = Math.round(playerStat.totalTime / playerStat.turnCount)
-    })
-
-    return stats
-  }, [turns, players])
-
-  // Timer effect
+  // Timer effects - one for game time, one for total time
   useEffect(() => {
-    let intervalId: NodeJS.Timeout
-
+    let gameIntervalId: NodeJS.Timeout
     if (isRunning) {
-      intervalId = setInterval(() => {
-        setElapsedTime(prev => prev + 1000)
+      gameIntervalId = setInterval(() => {
+        setGameTime(prev => prev + 1000)
       }, 1000)
     }
-
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId)
+      if (gameIntervalId) {
+        clearInterval(gameIntervalId)
       }
     }
   }, [isRunning])
+
+  useEffect(() => {
+    // Total time always increments, even when game is paused
+    const totalIntervalId = setInterval(() => {
+      setTotalTime(prev => prev + 1000)
+    }, 1000)
+    return () => clearInterval(totalIntervalId)
+  }, [])
 
   // Format time as HH:MM:SS
   const formatTime = (ms: number) => {
@@ -135,7 +99,7 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
     const turn = {
       playerName: currentPlayer.name,
       side: currentPlayer.side,
-      duration: elapsedTime,
+      duration: gameTime,
       timestamp: Date.now()
     }
 
@@ -149,7 +113,7 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
         .insert({
           game_id: gameId,
           player_id: currentPlayer.id,
-          duration: elapsedTime,
+          duration: gameTime,
           timestamp: new Date().toISOString()
         })
 
@@ -159,15 +123,33 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
       alert('Failed to save turn data')
     }
 
-    // Reset timer and move to next player
-    setElapsedTime(0)
+    // Reset game timer and move to next player
+    setGameTime(0)
     setCurrentPlayerIndex((prev) => (prev + 1) % players.length)
   }
 
-  // Toggle timer
-  const toggleTimer = () => {
-    setIsRunning(prev => !prev)
-  }
+  // Calculate player statistics
+  const playerStats = useMemo(() => {
+    const stats: Record<string, PlayerStats> = {}
+    players.forEach(player => {
+      stats[player.name] = {
+        longestTurn: 0,
+        averageTurn: 0,
+        totalTime: 0,
+        turnCount: 0
+      }
+    })
+
+    turns.forEach(turn => {
+      const playerStat = stats[turn.playerName]
+      playerStat.longestTurn = Math.max(playerStat.longestTurn, turn.duration)
+      playerStat.totalTime += turn.duration
+      playerStat.turnCount += 1
+      playerStat.averageTurn = Math.round(playerStat.totalTime / playerStat.turnCount)
+    })
+
+    return stats
+  }, [turns, players])
 
   // If no players are loaded yet, show loading state
   if (players.length === 0) {
@@ -177,16 +159,15 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
-        {/* Game Info */}
-        <div className="p-4 bg-gray-50 text-center">
-          <h1 className="text-xl font-bold">{gameName}</h1>
-          <p className="text-gray-600">{location}</p>
-        </div>
-
         {/* Timer Display */}
         <div className="p-8">
-          <div className="text-center text-6xl font-mono font-bold mb-8">
-            {formatTime(elapsedTime)}
+          <div className="text-center mb-8">
+            <div className="text-6xl font-mono font-bold">
+              {formatTime(gameTime)}
+            </div>
+            <div className="text-2xl font-mono text-gray-500 mt-2">
+              ({formatTime(totalTime)})
+            </div>
           </div>
 
           {/* Current Player */}
@@ -202,14 +183,14 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
           {/* Controls */}
           <div className="space-y-4">
             <button
-              onClick={toggleTimer}
+              onClick={() => setIsRunning(!isRunning)}
               className={`w-full py-4 rounded-lg text-white font-bold text-xl
                 ${isRunning
-                  ? 'bg-red-500 hover:bg-red-600'
+                  ? 'bg-yellow-500 hover:bg-yellow-600'
                   : 'bg-green-500 hover:bg-green-600'
                 }`}
             >
-              {isRunning ? 'Stop' : 'Start'}
+              {isRunning ? 'Pause' : 'Start'}
             </button>
 
             <button
@@ -226,7 +207,7 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
 
             <button
               onClick={onReset}
-              className="w-full py-4 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white font-bold text-xl"
+              className="w-full py-4 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-xl"
             >
               Reset Game
             </button>
