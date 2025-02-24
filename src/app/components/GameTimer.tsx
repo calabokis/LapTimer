@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Player {
@@ -8,6 +8,8 @@ interface Player {
   name: string
   side?: string
   color?: string
+  totalVP: number
+  turnVP: number
 }
 
 interface Turn {
@@ -15,6 +17,7 @@ interface Turn {
   side?: string
   duration: number
   timestamp: number
+  turnVP: number
 }
 
 interface PlayerStats {
@@ -42,14 +45,20 @@ export default function GameTimer({
   const [turnCounter, setTurnCounter] = useState(1)
   const [turnElapsedTime, setTurnElapsedTime] = useState(0)
   const [gameElapsedTime, setGameElapsedTime] = useState(0)
+  const [totalElapsedTime, setTotalElapsedTime] = useState(0)
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
+  const [showConfirmReset, setShowConfirmReset] = useState(false)
+  const [showConfirmEndGame, setShowConfirmEndGame] = useState(false)
+  const [shouldUpdatePercentages, setShouldUpdatePercentages] = useState(true)
 
   // Game setup state
   const [gameName, setGameName] = useState('')
   const [location, setLocation] = useState('')
   const [players, setPlayers] = useState<Player[]>([])
-  const [showConfirmReset, setShowConfirmReset] = useState(false)
+
+  // For tracking when percentages should be calculated
+  const lastCompletedRound = useRef(0)
 
   // Calculate player statistics
   const playerStats = useMemo(() => {
@@ -75,8 +84,8 @@ export default function GameTimer({
       playerStat.averageTurn = Math.round(playerStat.totalTime / playerStat.turnCount)
     })
 
-    // Calculate percentage of total game time
-    if (gameElapsedTime > 0) {
+    // Calculate percentage of total game time only when it should be updated
+    if (shouldUpdatePercentages && gameElapsedTime > 0) {
       players.forEach(player => {
         const playerStat = stats[player.name];
         playerStat.percentage = Math.round((playerStat.totalTime / gameElapsedTime) * 100);
@@ -84,7 +93,7 @@ export default function GameTimer({
     }
 
     return stats
-  }, [turns, players, gameElapsedTime])
+  }, [turns, players, gameElapsedTime, shouldUpdatePercentages])
 
   // Load game setup from localStorage on component mount
   useEffect(() => {
@@ -93,7 +102,15 @@ export default function GameTimer({
       const { gameName, location, players } = JSON.parse(gameSetup) as GameSetup
       setGameName(gameName)
       setLocation(location)
-      setPlayers(players)
+
+      // Initialize players with VP stats
+      const playersWithVP = players.map(player => ({
+        ...player,
+        totalVP: 0,
+        turnVP: 0
+      }))
+
+      setPlayers(playersWithVP)
     } else {
       onReset()
     }
@@ -116,6 +133,15 @@ export default function GameTimer({
       }
     }
   }, [isRunning])
+
+  // Total elapsed time timer (includes pauses)
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setTotalElapsedTime(prev => prev + 1000)
+    }, 1000)
+
+    return () => clearInterval(intervalId)
+  }, [])
 
   // Save total elapsed time to Supabase when the game stops
   useEffect(() => {
@@ -142,6 +168,18 @@ export default function GameTimer({
     saveElapsedTime()
   }, [isRunning, gameElapsedTime, gameId])
 
+  // Check if any player reaches 30 VP
+  useEffect(() => {
+    const checkVictoryPoints = () => {
+      const hasWinner = players.some(player => player.totalVP >= 30)
+      if (hasWinner && isRunning) {
+        setIsRunning(false)
+      }
+    }
+
+    checkVictoryPoints()
+  }, [players, isRunning])
+
   // Format time as mm:ss
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
@@ -159,6 +197,16 @@ export default function GameTimer({
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
   }
 
+  // Update player's turn VP
+  const updatePlayerTurnVP = (index: number, value: number) => {
+    const newPlayers = [...players]
+    newPlayers[index] = {
+      ...newPlayers[index],
+      turnVP: Math.max(0, Math.min(50, value))
+    }
+    setPlayers(newPlayers)
+  }
+
   // Handle end turn
   const handleEndTurn = async () => {
     // Record current turn
@@ -168,14 +216,21 @@ export default function GameTimer({
       playerName: currentPlayer.name,
       side: currentPlayer.side,
       duration: turnElapsedTime,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      turnVP: currentPlayer.turnVP
     };
 
     setTurns(prev => [...prev, newTurn])
 
-    // Save turn to Supabase
+    // Update player's total VP
+    const newPlayers = [...players]
+    newPlayers[currentPlayerIndex].totalVP = Math.min(50,
+      newPlayers[currentPlayerIndex].totalVP + newPlayers[currentPlayerIndex].turnVP)
+    newPlayers[currentPlayerIndex].turnVP = 0
+    setPlayers(newPlayers)
+
+    // We need to fetch the player's ID from Supabase since we may not have it locally
     try {
-      // We need to fetch the player's ID from Supabase since we may not have it locally
       const { data: playerData, error: playerError } = await supabase
         .from('players')
         .select('id')
@@ -214,6 +269,11 @@ export default function GameTimer({
     // Only increment turn counter when a full round has been completed
     if (nextPlayerIndex === 0) {
       setTurnCounter(prev => prev + 1)
+      // Update percentages at the end of each round
+      setShouldUpdatePercentages(true)
+      lastCompletedRound.current = turnCounter
+    } else {
+      setShouldUpdatePercentages(false)
     }
   }
 
@@ -233,6 +293,42 @@ export default function GameTimer({
     }
   }
 
+  // End game
+  const handleEndGame = async () => {
+    if (showConfirmEndGame) {
+      // Update percentages one last time
+      setShouldUpdatePercentages(true)
+
+      // Pause the game
+      setIsRunning(false)
+
+      // Save final state to Supabase
+      try {
+        const { error } = await supabase
+          .from('games')
+          .update({
+            total_elapsed_time: gameElapsedTime,
+            updated_at: new Date().toISOString(),
+            is_completed: true
+          })
+          .eq('id', gameId)
+
+        if (error) {
+          console.error('Error saving game end state:', error)
+        } else {
+          alert('Game saved successfully!')
+        }
+      } catch (error) {
+        console.error('Error ending game:', error)
+      }
+
+      setShowConfirmEndGame(false)
+    } else {
+      setShowConfirmEndGame(true)
+      setTimeout(() => setShowConfirmEndGame(false), 3000) // Hide confirmation after 3 seconds
+    }
+  }
+
   // Get the background color for a player
   const getPlayerColor = (player: Player) => {
     return player.color || '#f3f4f6' // Default to light gray if no color
@@ -245,9 +341,21 @@ export default function GameTimer({
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl relative">
-        {/* Control Buttons in Top Right */}
-        <div className="absolute top-4 right-4 flex space-x-2">
+      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl relative p-4">
+        {/* Top Control Buttons */}
+        <div className="flex justify-between items-center mb-6">
+          {/* Reset Button (left) */}
+          <button
+            onClick={handleResetGame}
+            className={`p-2 rounded-lg ${showConfirmReset ? 'bg-red-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+          </button>
+
+          {/* Play/Pause Button (center) */}
           <button
             onClick={toggleTimer}
             className="p-2 rounded-lg bg-gray-200 hover:bg-gray-300"
@@ -263,40 +371,34 @@ export default function GameTimer({
               </svg>
             )}
           </button>
+
+          {/* End Game Button (right) */}
           <button
-            onClick={handleResetGame}
-            className={`p-2 rounded-lg ${showConfirmReset ? 'bg-red-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
+            onClick={handleEndGame}
+            className={`p-2 rounded-lg ${showConfirmEndGame ? 'bg-red-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
             </svg>
           </button>
         </div>
 
-        {/* Game Info */}
-        <div className="p-4 bg-gray-50 text-center">
-          <h1 className="text-xl font-bold">{gameName}</h1>
-          <p className="text-gray-600">{location}</p>
-        </div>
-
         {/* Timer Display */}
-        <div className="p-8">
-          <div className="text-center text-6xl font-mono font-bold mb-2">
+        <div className="p-4">
+          <div className="text-center text-6xl font-mono font-bold mb-1">
             {formatGameTime(gameElapsedTime)}
           </div>
-          <div className="text-center text-sm text-gray-500 mb-8">
-            Turn: {turnCounter}
+          <div className="text-center text-2xl font-mono text-gray-500 mb-4">
+            ({formatGameTime(totalElapsedTime)})
           </div>
-
-          {/* Current Player */}
-          <div className="text-center text-3xl mb-8 font-bold">
-            {players[currentPlayerIndex].name}
+          <div className="text-center text-2xl font-bold mb-8">
+            Round {turnCounter}
           </div>
 
           {/* Player Statistics */}
-          <div className="mt-8">
-            <h2 className="text-xl font-bold mb-4">Player Statistics</h2>
+          <div className="mt-4">
             <div className="space-y-4">
               {players.map((player, index) => {
                 const stats = playerStats[player.name]
@@ -335,10 +437,30 @@ export default function GameTimer({
                         </div>
                       </div>
                       <div>
-                        <span className="text-gray-600">%:</span>
                         <div className="font-mono">
                           {stats.percentage}%
                         </div>
+                      </div>
+                    </div>
+
+                    {/* VP Counters */}
+                    <div className="flex items-center mt-2 space-x-4">
+                      <div>
+                        <span className="text-sm text-gray-600">Total VP:</span>
+                        <div className="font-mono text-lg font-bold">{String(player.totalVP).padStart(2, '0')}</div>
+                      </div>
+
+                      <div>
+                        <span className="text-sm text-gray-600">Turn VP:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="50"
+                          value={player.turnVP}
+                          onChange={(e) => updatePlayerTurnVP(index, parseInt(e.target.value) || 0)}
+                          className="w-16 font-mono text-lg font-bold bg-white border rounded-md px-2"
+                          disabled={!isCurrentPlayer}
+                        />
                       </div>
                     </div>
 
@@ -379,7 +501,10 @@ export default function GameTimer({
                       </span>
                     )}
                   </div>
-                  <span className="font-mono">{formatTime(turn.duration)}</span>
+                  <div className="flex items-center space-x-3">
+                    <span className="font-mono">VP: {turn.turnVP}</span>
+                    <span className="font-mono">{formatTime(turn.duration)}</span>
+                  </div>
                 </div>
               ))}
             </div>
