@@ -4,9 +4,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Player {
-  id: string
   name: string
   side?: string
+  color?: string
 }
 
 interface Turn {
@@ -21,125 +21,51 @@ interface PlayerStats {
   averageTurn: number
   totalTime: number
   turnCount: number
+  percentage: number
 }
 
-interface GameTimerProps {
+interface GameSetup {
+  gameName: string
+  location: string
+  players: Player[]
+}
+
+export default function GameTimer({
+  gameId,
+  onReset
+}: {
   gameId: string
   onReset: () => void
-}
-
-export default function GameTimer({ gameId, onReset }: GameTimerProps) {
+}) {
   const [isRunning, setIsRunning] = useState(false)
-  const [gameTime, setGameTime] = useState(0) // Active game time
-  const [totalTime, setTotalTime] = useState(0) // Total elapsed time including pauses
+  const [turnCounter, setTurnCounter] = useState(1)
+  const [turnElapsedTime, setTurnElapsedTime] = useState(0)
+  const [gameElapsedTime, setGameElapsedTime] = useState(0)
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
   const [turns, setTurns] = useState<Turn[]>([])
+
+  // Game setup state
+  const [gameName, setGameName] = useState('')
+  const [location, setLocation] = useState('')
   const [players, setPlayers] = useState<Player[]>([])
-
-  // Load players data from Supabase when gameId changes
-  useEffect(() => {
-    const loadPlayers = async () => {
-      try {
-        const { data: playersData, error: playersError } = await supabase
-          .from('players')
-          .select('*')
-          .eq('game_id', gameId)
-
-        if (playersError) throw playersError
-
-        if (playersData) {
-          setPlayers(playersData)
-        }
-      } catch (error) {
-        console.error('Error loading players data:', error)
-        alert('Failed to load players data')
-      }
-    }
-
-    loadPlayers()
-  }, [gameId])
-
-  // Timer effects - one for game time, one for total time
-  useEffect(() => {
-    let gameIntervalId: NodeJS.Timeout
-    if (isRunning) {
-      gameIntervalId = setInterval(() => {
-        setGameTime(prev => prev + 1000)
-      }, 1000)
-    }
-    return () => {
-      if (gameIntervalId) {
-        clearInterval(gameIntervalId)
-      }
-    }
-  }, [isRunning])
-
-  useEffect(() => {
-    // Total time always increments, even when game is paused
-    const totalIntervalId = setInterval(() => {
-      setTotalTime(prev => prev + 1000)
-    }, 1000)
-    return () => clearInterval(totalIntervalId)
-  }, [])
-
-  // Format time as HH:MM:SS
-  const formatTime = (ms: number) => {
-    const totalSeconds = Math.floor(ms / 1000)
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-  }
-
-  // Handle next turn
-  const handleNextTurn = async () => {
-    if (!players[currentPlayerIndex]) return
-
-    const currentPlayer = players[currentPlayerIndex]
-    const turn = {
-      playerName: currentPlayer.name,
-      side: currentPlayer.side,
-      duration: gameTime,
-      timestamp: Date.now()
-    }
-
-    // Add turn to local state
-    setTurns(prev => [...prev, turn])
-
-    // Save turn to Supabase
-    try {
-      const { error } = await supabase
-        .from('turns')
-        .insert({
-          game_id: gameId,
-          player_id: currentPlayer.id,
-          duration: gameTime,
-          timestamp: new Date().toISOString()
-        })
-
-      if (error) throw error
-    } catch (error) {
-      console.error('Error saving turn:', error)
-      alert('Failed to save turn data')
-    }
-
-    // Reset game timer and move to next player
-    setGameTime(0)
-    setCurrentPlayerIndex((prev) => (prev + 1) % players.length)
-  }
+  const [showConfirmReset, setShowConfirmReset] = useState(false)
 
   // Calculate player statistics
   const playerStats = useMemo(() => {
     const stats: Record<string, PlayerStats> = {}
+
+    // Initialize stats for all players
     players.forEach(player => {
       stats[player.name] = {
         longestTurn: 0,
         averageTurn: 0,
         totalTime: 0,
-        turnCount: 0
+        turnCount: 0,
+        percentage: 0
       }
     })
 
+    // Calculate stats from turns
     turns.forEach(turn => {
       const playerStat = stats[turn.playerName]
       playerStat.longestTurn = Math.max(playerStat.longestTurn, turn.duration)
@@ -148,81 +74,224 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
       playerStat.averageTurn = Math.round(playerStat.totalTime / playerStat.turnCount)
     })
 
-    return stats
-  }, [turns, players])
+    // Calculate percentage of total game time
+    if (gameElapsedTime > 0) {
+      players.forEach(player => {
+        const playerStat = stats[player.name];
+        playerStat.percentage = Math.round((playerStat.totalTime / gameElapsedTime) * 100);
+      });
+    }
 
-  // If no players are loaded yet, show loading state
+    return stats
+  }, [turns, players, gameElapsedTime])
+
+  // Load game setup from localStorage on component mount
+  useEffect(() => {
+    const gameSetup = localStorage.getItem('gameSetup')
+    if (gameSetup) {
+      const { gameName, location, players } = JSON.parse(gameSetup) as GameSetup
+      setGameName(gameName)
+      setLocation(location)
+      setPlayers(players)
+    } else {
+      onReset()
+    }
+  }, [onReset])
+
+  // Timer effect for turn and game time
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout
+
+    if (isRunning) {
+      intervalId = setInterval(() => {
+        setTurnElapsedTime(prev => prev + 1000)
+        setGameElapsedTime(prev => prev + 1000)
+      }, 1000)
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [isRunning])
+
+  // Save total elapsed time to Supabase when the game stops
+  useEffect(() => {
+    const saveElapsedTime = async () => {
+      if (!isRunning && gameElapsedTime > 0 && gameId) {
+        try {
+          const { error } = await supabase
+            .from('games')
+            .update({
+              total_elapsed_time: gameElapsedTime,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', gameId)
+
+          if (error) {
+            console.error('Error saving elapsed time:', error)
+          }
+        } catch (error) {
+          console.error('Error saving elapsed time:', error)
+        }
+      }
+    }
+
+    saveElapsedTime()
+  }, [isRunning, gameElapsedTime, gameId])
+
+  // Format time as mm:ss
+  const formatTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
+
+  // Format time as HH:mm:ss (for game timer)
+  const formatGameTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
+
+  // Handle end turn
+  const handleEndTurn = async () => {
+    // Record current turn
+    const currentPlayer = players[currentPlayerIndex]
+
+    const newTurn = {
+      playerName: currentPlayer.name,
+      side: currentPlayer.side,
+      duration: turnElapsedTime,
+      timestamp: Date.now()
+    };
+
+    setTurns(prev => [...prev, newTurn])
+
+    // Save turn to Supabase
+    try {
+      const { error } = await supabase
+        .from('turns')
+        .insert({
+          game_id: gameId,
+          player_id: currentPlayer.id || '', // You may need to get the actual player ID
+          duration: turnElapsedTime,
+          timestamp: new Date().toISOString()
+        })
+
+      if (error) {
+        console.error('Error saving turn:', error)
+      }
+    } catch (error) {
+      console.error('Error saving turn:', error)
+    }
+
+    // Calculate next player index
+    const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
+
+    // Reset turn timer and move to next player
+    setTurnElapsedTime(0)
+    setCurrentPlayerIndex(nextPlayerIndex)
+
+    // Only increment turn counter when a full round has been completed
+    if (nextPlayerIndex === 0) {
+      setTurnCounter(prev => prev + 1)
+    }
+  }
+
+  // Toggle timer
+  const toggleTimer = () => {
+    setIsRunning(prev => !prev)
+  }
+
+  // Reset game and go back to setup
+  const handleResetGame = () => {
+    if (showConfirmReset) {
+      localStorage.removeItem('gameSetup')
+      onReset()
+    } else {
+      setShowConfirmReset(true)
+      setTimeout(() => setShowConfirmReset(false), 3000) // Hide confirmation after 3 seconds
+    }
+  }
+
+  // Get the background color for a player
+  const getPlayerColor = (player: Player) => {
+    return player.color || '#f3f4f6' // Default to light gray if no color
+  }
+
+  // If players are not loaded, show nothing
   if (players.length === 0) {
-    return <div className="flex justify-center items-center min-h-screen">Loading...</div>
+    return null
   }
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
+      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl relative">
+        {/* Control Buttons in Top Right */}
+        <div className="absolute top-4 right-4 flex space-x-2">
+          <button
+            onClick={toggleTimer}
+            className="p-2 rounded-lg bg-gray-200 hover:bg-gray-300"
+          >
+            {isRunning ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16"/>
+                <rect x="14" y="4" width="4" height="16"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5,3 19,12 5,21"/>
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={handleResetGame}
+            className={`p-2 rounded-lg ${showConfirmReset ? 'bg-red-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Game Info */}
+        <div className="p-4 bg-gray-50 text-center">
+          <h1 className="text-xl font-bold">{gameName}</h1>
+          <p className="text-gray-600">{location}</p>
+        </div>
+
         {/* Timer Display */}
         <div className="p-8">
-          <div className="text-center mb-8">
-            <div className="text-6xl font-mono font-bold">
-              {formatTime(gameTime)}
-            </div>
-            <div className="text-2xl font-mono text-gray-500 mt-2">
-              ({formatTime(totalTime)})
-            </div>
+          <div className="text-center text-6xl font-mono font-bold mb-2">
+            {formatGameTime(gameElapsedTime)}
+          </div>
+          <div className="text-center text-sm text-gray-500 mb-8">
+            Turn: {turnCounter}
           </div>
 
           {/* Current Player */}
-          <div className="text-center text-xl mb-8">
-            Current Player: {players[currentPlayerIndex].name}
-            {players[currentPlayerIndex].side &&
-              <span className="ml-2 text-gray-600">
-                (Side: {players[currentPlayerIndex].side})
-              </span>
-            }
-          </div>
-
-          {/* Controls */}
-          <div className="space-y-4">
-            <button
-              onClick={() => setIsRunning(!isRunning)}
-              className={`w-full py-4 rounded-lg text-white font-bold text-xl
-                ${isRunning
-                  ? 'bg-yellow-500 hover:bg-yellow-600'
-                  : 'bg-green-500 hover:bg-green-600'
-                }`}
-            >
-              {isRunning ? 'Pause' : 'Start'}
-            </button>
-
-            <button
-              onClick={handleNextTurn}
-              disabled={!isRunning}
-              className={`w-full py-4 rounded-lg text-white font-bold text-xl
-                ${!isRunning
-                  ? 'bg-gray-300 cursor-not-allowed'
-                  : 'bg-blue-500 hover:bg-blue-600'
-                }`}
-            >
-              Next Turn
-            </button>
-
-            <button
-              onClick={onReset}
-              className="w-full py-4 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-xl"
-            >
-              Reset Game
-            </button>
+          <div className="text-center text-3xl mb-8 font-bold">
+            {players[currentPlayerIndex].name}
           </div>
 
           {/* Player Statistics */}
           <div className="mt-8">
             <h2 className="text-xl font-bold mb-4">Player Statistics</h2>
             <div className="space-y-4">
-              {players.map(player => {
+              {players.map((player, index) => {
                 const stats = playerStats[player.name]
+                const isCurrentPlayer = index === currentPlayerIndex
                 return (
                   <div
-                    key={player.id}
-                    className="p-4 bg-gray-50 rounded-lg"
+                    key={player.name}
+                    className="p-4 rounded-lg relative"
+                    style={{ backgroundColor: getPlayerColor(player) }}
                   >
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-bold">{player.name}</span>
@@ -232,32 +301,47 @@ export default function GameTimer({ gameId, onReset }: GameTimerProps) {
                         </span>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="grid grid-cols-4 gap-2 text-sm">
                       <div>
-                        <span className="text-gray-600">Longest Turn:</span>
-                        <span className="ml-2 font-mono">
+                        <span className="text-gray-600">Longest:</span>
+                        <div className="font-mono">
                           {formatTime(stats.longestTurn)}
-                        </span>
+                        </div>
                       </div>
                       <div>
-                        <span className="text-gray-600">Average Turn:</span>
-                        <span className="ml-2 font-mono">
+                        <span className="text-gray-600">Average:</span>
+                        <div className="font-mono">
                           {formatTime(stats.averageTurn)}
-                        </span>
+                        </div>
                       </div>
                       <div>
-                        <span className="text-gray-600">Total Time:</span>
-                        <span className="ml-2 font-mono">
+                        <span className="text-gray-600">Total:</span>
+                        <div className="font-mono">
                           {formatTime(stats.totalTime)}
-                        </span>
+                        </div>
                       </div>
                       <div>
-                        <span className="text-gray-600">Turn Count:</span>
-                        <span className="ml-2 font-mono">
-                          {stats.turnCount}
-                        </span>
+                        <span className="text-gray-600">%:</span>
+                        <div className="font-mono">
+                          {stats.percentage}%
+                        </div>
                       </div>
                     </div>
+
+                    {/* End Turn Button (only shown for current player) */}
+                    {isCurrentPlayer && (
+                      <button
+                        onClick={handleEndTurn}
+                        disabled={!isRunning}
+                        className={`absolute right-2 top-1/2 transform -translate-y-1/2 px-3 py-2 rounded-lg text-white font-bold
+                          ${!isRunning
+                            ? 'bg-gray-300 cursor-not-allowed'
+                            : 'bg-blue-500 hover:bg-blue-600'
+                          }`}
+                      >
+                        End Turn
+                      </button>
+                    )}
                   </div>
                 )
               })}

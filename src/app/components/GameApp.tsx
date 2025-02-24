@@ -10,6 +10,7 @@ import Auth from './Auth'
 interface PlayerSetup {
   name: string
   side?: string
+  color?: string
 }
 
 export default function GameApp() {
@@ -40,20 +41,21 @@ export default function GameApp() {
     if (!session?.user?.id) return
 
     try {
-      // First, create the game record
+      // First, create the game record with total_elapsed_time initialized to 0
       const { data: game, error: gameError } = await supabase
         .from('games')
         .insert({
           name: gameInfo.gameName,
           location: gameInfo.location,
-          user_id: session.user.id
+          user_id: session.user.id,
+          total_elapsed_time: 0
         })
         .select()
         .single()
 
       if (gameError) throw gameError
 
-      // Then, create player records
+      // Then, create player records (without storing color in the database)
       const { error: playersError } = await supabase
         .from('players')
         .insert(
