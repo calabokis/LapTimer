@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Player {
+  id?: string
   name: string
   side?: string
   color?: string
@@ -174,11 +175,24 @@ export default function GameTimer({
 
     // Save turn to Supabase
     try {
+      // We need to fetch the player's ID from Supabase since we may not have it locally
+      const { data: playerData, error: playerError } = await supabase
+        .from('players')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('name', currentPlayer.name)
+        .single();
+
+      if (playerError) {
+        console.error('Error finding player:', playerError);
+        return;
+      }
+
       const { error } = await supabase
         .from('turns')
         .insert({
           game_id: gameId,
-          player_id: currentPlayer.id || '', // You may need to get the actual player ID
+          player_id: playerData.id,
           duration: turnElapsedTime,
           timestamp: new Date().toISOString()
         })
