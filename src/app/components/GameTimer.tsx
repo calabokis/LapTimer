@@ -1,4 +1,14 @@
-'use client'
+// Check if any player reaches 30 VP
+  useEffect(() => {
+    const checkVictoryPoints = () => {
+      const hasWinner = players.some(player => player.totalVP >= 30)
+      if (hasWinner && isRunning) {
+        setIsRunning(false)
+      }
+    }
+
+    checkVictoryPoints()
+  }, [players, isRunning])'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -58,7 +68,7 @@ export default function GameTimer({
   // For tracking when percentages should be calculated
   const lastCompletedRound = useRef(0)
 
-  // Calculate player statistics
+  // Initialize playerStats with stored percentages
   const playerStats = useMemo(() => {
     const stats: Record<string, PlayerStats> = {}
 
@@ -69,7 +79,7 @@ export default function GameTimer({
         averageTurn: 0,
         totalTime: 0,
         turnCount: 0,
-        percentage: 0
+        percentage: percentages[player.name] || 0
       }
     })
 
@@ -82,16 +92,34 @@ export default function GameTimer({
       playerStat.averageTurn = Math.round(playerStat.totalTime / playerStat.turnCount)
     })
 
-    // Only calculate percentages when shouldUpdatePercentages is true
+    // Only update the percentages when triggered
     if (shouldUpdatePercentages && gameElapsedTime > 0) {
+      // Calculate total time across all players
+      const totalPlayerTime = Object.values(stats).reduce((sum, stat) => sum + stat.totalTime, 0);
+
+      // Calculate percentages based on the total player time
+      const newPercentages: Record<string, number> = {};
       players.forEach(player => {
         const playerStat = stats[player.name];
-        playerStat.percentage = Math.round((playerStat.totalTime / gameElapsedTime) * 100);
+        // Store raw percentage for this calculation
+        const rawPercentage = (playerStat.totalTime / totalPlayerTime) * 100;
+        // Round for display
+        playerStat.percentage = Math.round(rawPercentage);
+        // Save for future reference
+        newPercentages[player.name] = playerStat.percentage;
       });
+
+      // Save the percentages for future use
+      setPercentages(newPercentages);
+
+      // Reset the update flag
+      if (shouldUpdatePercentages) {
+        setShouldUpdatePercentages(false);
+      }
     }
 
     return stats
-  }, [turns, players, gameElapsedTime, shouldUpdatePercentages])
+  }, [turns, players, gameElapsedTime, shouldUpdatePercentages, percentages])
 
   // Load game setup from localStorage on component mount
   useEffect(() => {
@@ -142,17 +170,14 @@ export default function GameTimer({
   // We no longer automatically save game data when the game stops
   // Instead we'll save everything at the end of the game
 
-  // Check if any player reaches 30 VP
+  // Effect to initialize percentages
   useEffect(() => {
-    const checkVictoryPoints = () => {
-      const hasWinner = players.some(player => player.totalVP >= 30)
-      if (hasWinner && isRunning) {
-        setIsRunning(false)
-      }
+    // Initialize percentages only once we have player data and at least one turn
+    if (players.length > 0 && turns.length > 0 && !hasInitializedPercentages.current) {
+      setShouldUpdatePercentages(true);
+      hasInitializedPercentages.current = true;
     }
-
-    checkVictoryPoints()
-  }, [players, isRunning])
+  }, [players, turns]);
 
   // Format time as mm:ss
   const formatTime = (ms: number) => {
@@ -219,12 +244,9 @@ export default function GameTimer({
 
     // Only increment turn counter when a full round has been completed
     if (nextPlayerIndex === 0) {
-      setTurnCounter(prev => prev + 1)
+      setTurnCounter(prev => prev + 1);
       // Update percentages at the end of each round
-      setShouldUpdatePercentages(true)
-      lastCompletedRound.current = turnCounter
-    } else {
-      setShouldUpdatePercentages(false)
+      setShouldUpdatePercentages(true);
     }
   }
 
