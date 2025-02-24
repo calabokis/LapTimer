@@ -55,14 +55,15 @@ export default function GameApp() {
 
       if (gameError) throw gameError
 
-      // Then, create player records (without storing color in the database)
+      // Then, create player records (without storing color in the database, but initializing VP)
       const { error: playersError } = await supabase
         .from('players')
         .insert(
           gameInfo.players.map(player => ({
             game_id: game.id,
             name: player.name,
-            side: player.side
+            side: player.side,
+            total_vp: 0
           }))
         )
 

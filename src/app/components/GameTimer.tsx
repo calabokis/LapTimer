@@ -53,8 +53,6 @@ export default function GameTimer({
   const [shouldUpdatePercentages, setShouldUpdatePercentages] = useState(true)
 
   // Game setup state
-  const [gameName, setGameName] = useState('')
-  const [location, setLocation] = useState('')
   const [players, setPlayers] = useState<Player[]>([])
 
   // For tracking when percentages should be calculated
@@ -99,9 +97,7 @@ export default function GameTimer({
   useEffect(() => {
     const gameSetup = localStorage.getItem('gameSetup')
     if (gameSetup) {
-      const { gameName, location, players } = JSON.parse(gameSetup) as GameSetup
-      setGameName(gameName)
-      setLocation(location)
+      const { players } = JSON.parse(gameSetup) as GameSetup
 
       // Initialize players with VP stats
       const playersWithVP = players.map(player => ({
@@ -143,30 +139,8 @@ export default function GameTimer({
     return () => clearInterval(intervalId)
   }, [])
 
-  // Save total elapsed time to Supabase when the game stops
-  useEffect(() => {
-    const saveElapsedTime = async () => {
-      if (!isRunning && gameElapsedTime > 0 && gameId) {
-        try {
-          const { error } = await supabase
-            .from('games')
-            .update({
-              total_elapsed_time: gameElapsedTime,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', gameId)
-
-          if (error) {
-            console.error('Error saving elapsed time:', error)
-          }
-        } catch (error) {
-          console.error('Error saving elapsed time:', error)
-        }
-      }
-    }
-
-    saveElapsedTime()
-  }, [isRunning, gameElapsedTime, gameId])
+  // We no longer automatically save game data when the game stops
+  // Instead we'll save everything at the end of the game
 
   // Check if any player reaches 30 VP
   useEffect(() => {
@@ -222,42 +196,19 @@ export default function GameTimer({
 
     setTurns(prev => [...prev, newTurn])
 
-    // Update player's total VP
+          // Update player's total VP
     const newPlayers = [...players]
-    newPlayers[currentPlayerIndex].totalVP = Math.min(50,
+    const newTotalVP = Math.min(50,
       newPlayers[currentPlayerIndex].totalVP + newPlayers[currentPlayerIndex].turnVP)
+    newPlayers[currentPlayerIndex].totalVP = newTotalVP
     newPlayers[currentPlayerIndex].turnVP = 0
     setPlayers(newPlayers)
 
-    // We need to fetch the player's ID from Supabase since we may not have it locally
-    try {
-      const { data: playerData, error: playerError } = await supabase
-        .from('players')
-        .select('id')
-        .eq('game_id', gameId)
-        .eq('name', currentPlayer.name)
-        .single();
+    // We don't update VP in Supabase immediately anymore
+    // This will be saved when the game ends
 
-      if (playerError) {
-        console.error('Error finding player:', playerError);
-        return;
-      }
-
-      const { error } = await supabase
-        .from('turns')
-        .insert({
-          game_id: gameId,
-          player_id: playerData.id,
-          duration: turnElapsedTime,
-          timestamp: new Date().toISOString()
-        })
-
-      if (error) {
-        console.error('Error saving turn:', error)
-      }
-    } catch (error) {
-      console.error('Error saving turn:', error)
-    }
+    // We're no longer saving turn data in real-time
+    // All turns will be saved together when the game ends
 
     // Calculate next player index
     const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
@@ -282,9 +233,14 @@ export default function GameTimer({
     setIsRunning(prev => !prev)
   }
 
-  // Reset game and go back to setup
+  // Reset game and go back to setup with option to save
   const handleResetGame = () => {
     if (showConfirmReset) {
+      // Ask if user wants to save before resetting
+      if (gameElapsedTime > 0 && window.confirm('Would you like to save the current game before resetting?')) {
+        saveGameData(true);
+      }
+
       localStorage.removeItem('gameSetup')
       onReset()
     } else {
@@ -293,39 +249,125 @@ export default function GameTimer({
     }
   }
 
+  // Save all game data to Supabase
+  const saveGameData = async (isReset = false) => {
+    // Update percentages one last time
+    setShouldUpdatePercentages(true)
+
+    // Pause the game if it's running
+    if (isRunning) {
+      setIsRunning(false)
+    }
+
+    // Save all game data
+    try {
+      // 1. Save game state
+      const { error: gameError } = await supabase
+        .from('games')
+        .update({
+          total_elapsed_time: gameElapsedTime,
+          updated_at: new Date().toISOString(),
+          is_completed: !isReset
+        })
+        .eq('id', gameId);
+
+      if (gameError) {
+        console.error('Error saving game state:', gameError);
+        return false;
+      }
+
+      // 2. Save all turns
+      // First clear existing turns for this game
+      const { error: clearTurnsError } = await supabase
+        .from('turns')
+        .delete()
+        .eq('game_id', gameId);
+
+      if (clearTurnsError) {
+        console.error('Error clearing existing turns:', clearTurnsError);
+        return false;
+      }
+
+      // Get player IDs from Supabase
+      const { data: playerData, error: playerError } = await supabase
+        .from('players')
+        .select('id, name')
+        .eq('game_id', gameId);
+
+      if (playerError || !playerData) {
+        console.error('Error fetching players:', playerError);
+        return false;
+      }
+
+      // Create a map of player names to IDs
+      const playerMap = {};
+      playerData.forEach(player => {
+        playerMap[player.name] = player.id;
+      });
+
+      // Now insert all turns
+      const turnsToInsert = turns.map(turn => ({
+        game_id: gameId,
+        player_id: playerMap[turn.playerName] || '',
+        duration: turn.duration,
+        timestamp: new Date(turn.timestamp).toISOString(),
+        victory_points: turn.turnVP
+      }));
+
+      if (turnsToInsert.length > 0) {
+        const { error: insertTurnsError } = await supabase
+          .from('turns')
+          .insert(turnsToInsert);
+
+        if (insertTurnsError) {
+          console.error('Error saving turns:', insertTurnsError);
+          return false;
+        }
+      }
+
+      // 3. Update player VP totals
+      for (const player of players) {
+        const playerId = playerMap[player.name];
+        if (playerId) {
+          const { error: vpError } = await supabase
+            .from('players')
+            .update({ total_vp: player.totalVP })
+            .eq('id', playerId);
+
+          if (vpError) {
+            console.error(`Error updating VP for ${player.name}:`, vpError);
+          }
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error saving game data:', error);
+      return false;
+    }
+  };
+
   // End game
   const handleEndGame = async () => {
     if (showConfirmEndGame) {
-      // Update percentages one last time
-      setShouldUpdatePercentages(true)
+      // Save all game data to Supabase
+      const success = await saveGameData();
 
-      // Pause the game
-      setIsRunning(false)
-
-      // Save final state to Supabase
-      try {
-        const { error } = await supabase
-          .from('games')
-          .update({
-            total_elapsed_time: gameElapsedTime,
-            updated_at: new Date().toISOString(),
-            is_completed: true
-          })
-          .eq('id', gameId)
-
-        if (error) {
-          console.error('Error saving game end state:', error)
-        } else {
-          alert('Game saved successfully!')
+      if (success) {
+        alert('Game saved successfully!');
+        // Optionally return to game setup
+        if (window.confirm('Return to game setup?')) {
+          localStorage.removeItem('gameSetup');
+          onReset();
         }
-      } catch (error) {
-        console.error('Error ending game:', error)
+      } else {
+        alert('Failed to save game data. Please try again.');
       }
 
-      setShowConfirmEndGame(false)
+      setShowConfirmEndGame(false);
     } else {
-      setShowConfirmEndGame(true)
-      setTimeout(() => setShowConfirmEndGame(false), 3000) // Hide confirmation after 3 seconds
+      setShowConfirmEndGame(true);
+      setTimeout(() => setShowConfirmEndGame(false), 3000); // Hide confirmation after 3 seconds
     }
   }
 
