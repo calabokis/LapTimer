@@ -300,7 +300,7 @@ export default function GameTimer({
       }
 
       // Create a map of player names to IDs
-      const playerMap = {};
+      const playerMap: Record<string, string> = {};
       playerData.forEach(player => {
         playerMap[player.name] = player.id;
       });
