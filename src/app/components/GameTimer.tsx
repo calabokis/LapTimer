@@ -82,7 +82,7 @@ export default function GameTimer({
       playerStat.averageTurn = Math.round(playerStat.totalTime / playerStat.turnCount)
     })
 
-    // Calculate percentage of total game time only when it should be updated
+    // Only calculate percentages when shouldUpdatePercentages is true
     if (shouldUpdatePercentages && gameElapsedTime > 0) {
       players.forEach(player => {
         const playerStat = stats[player.name];
@@ -230,7 +230,11 @@ export default function GameTimer({
 
   // Toggle timer
   const toggleTimer = () => {
-    setIsRunning(prev => !prev)
+    // Update percentages when pausing
+    if (isRunning) {
+      setShouldUpdatePercentages(true);
+    }
+    setIsRunning(prev => !prev);
   }
 
   // Reset game and go back to setup with option to save
