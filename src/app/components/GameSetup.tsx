@@ -1,17 +1,21 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface GameTemplate {
   id: string
   name: string
-  sides: string[]
+  sides: Array<{
+    name: string
+    icon?: string
+  }>
 }
 
 interface PlayerSetup {
   name: string
   side?: string
+  sideIcon?: string
   color?: string
 }
 
@@ -37,6 +41,9 @@ const playerColors = [
   { name: 'Brown', value: '#A2845E' },
 ]
 
+// Maximum file size: 1MB
+const MAX_FILE_SIZE = 1 * 1024 * 1024;
+
 export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [gameName, setGameName] = useState('')
   const [location, setLocation] = useState('')
@@ -46,12 +53,17 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [showGameModal, setShowGameModal] = useState(false)
   const [gameTemplates, setGameTemplates] = useState<GameTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [showSideDropdown, setShowSideDropdown] = useState<number | null>(null)
 
   // State for the Add/Edit Game modal
   const [templateName, setTemplateName] = useState('')
-  const [templateSides, setTemplateSides] = useState<string[]>([])
+  const [templateSides, setTemplateSides] = useState<Array<{name: string, icon?: string}>>([])
   const [currentSide, setCurrentSide] = useState('')
+  const [currentSideIcon, setCurrentSideIcon] = useState<File | null>(null)
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
+  const [sideIconPreview, setSideIconPreview] = useState<string | null>(null)
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch game templates on component mount
   useEffect(() => {
@@ -72,7 +84,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         templates.map(async (template) => {
           const { data: sides, error: sidesError } = await supabase
             .from('game_template_sides')
-            .select('side_name')
+            .select('side_name, icon_url')
             .eq('template_id', template.id)
             .order('created_at')
 
@@ -81,7 +93,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           return {
             id: template.id,
             name: template.name,
-            sides: sides.map(s => s.side_name)
+            sides: sides.map(s => ({
+              name: s.side_name,
+              icon: s.icon_url
+            }))
           }
         })
       )
@@ -102,8 +117,16 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   }
 
   const handleAddPlayer = () => {
-    const nextColorIndex = players.length % playerColors.length;
-    setPlayers([...players, { name: '', side: '', color: playerColors[nextColorIndex].value }])
+    // Filter out colors that are already used by other players
+    const usedColors = players.map(p => p.color);
+    const availableColors = playerColors.filter(color => !usedColors.includes(color.value));
+
+    // Get the first available color or default to the first color if all are used
+    const nextColor = availableColors.length > 0
+      ? availableColors[0].value
+      : playerColors[0].value;
+
+    setPlayers([...players, { name: '', side: '', color: nextColor }])
   }
 
   const handleRemovePlayer = (index: number) => {
@@ -114,8 +137,39 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
   const updatePlayer = (index: number, updates: Partial<PlayerSetup>) => {
     const newPlayers = [...players]
+
+    // If trying to update the color, check if that color is already used
+    if (updates.color) {
+      const colorInUse = players.some((player, idx) =>
+        player.color === updates.color && idx !== index
+      );
+
+      if (colorInUse) {
+        alert('This color is already used by another player');
+        return;
+      }
+    }
+
+    // If trying to update the side, check if that side is already used
+    if (updates.side) {
+      const sideInUse = players.some((player, idx) =>
+        player.side === updates.side && idx !== index
+      );
+
+      if (sideInUse) {
+        alert('This side is already chosen by another player');
+        return;
+      }
+    }
+
+    // Apply updates
     newPlayers[index] = { ...newPlayers[index], ...updates }
     setPlayers(newPlayers)
+
+    // Close side dropdown after selection
+    if (updates.side) {
+      setShowSideDropdown(null);
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -144,21 +198,26 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   }
 
   const openAddGameModal = () => {
-    setTemplateName('')
-    setTemplateSides([])
-    setCurrentSide('')
-    setEditingTemplateId(null)
-    setShowGameModal(true)
-  }
-
-  // We'll keep this function but add a way to use it from the dropdown
-  const handleGameEdit = (templateId: string) => {
-    const template = gameTemplates.find(t => t.id === templateId)
-    if (template) {
-      setTemplateName(template.name)
-      setTemplateSides([...template.sides])
+    // If a template is selected and the button should be "Edit"
+    if (selectedTemplateId) {
+      const template = gameTemplates.find(t => t.id === selectedTemplateId)
+      if (template) {
+        setTemplateName(template.name)
+        setTemplateSides([...template.sides])
+        setCurrentSide('')
+        setCurrentSideIcon(null)
+        setSideIconPreview(null)
+        setEditingTemplateId(selectedTemplateId)
+        setShowGameModal(true)
+      }
+    } else {
+      // New template
+      setTemplateName('')
+      setTemplateSides([])
       setCurrentSide('')
-      setEditingTemplateId(templateId)
+      setCurrentSideIcon(null)
+      setSideIconPreview(null)
+      setEditingTemplateId(null)
       setShowGameModal(true)
     }
   }
@@ -167,17 +226,78 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     setShowGameModal(false)
   }
 
-  const handleAddTemplateSide = () => {
-    if (currentSide.trim() === '') return
+  const handleSideIconChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
 
-    if (!templateSides.includes(currentSide.trim())) {
-      setTemplateSides([...templateSides, currentSide.trim()])
+      // Check file size
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`File size exceeds the limit (${MAX_FILE_SIZE / 1024 / 1024}MB)`);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      setCurrentSideIcon(file);
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSideIconPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
-    setCurrentSide('')
   }
 
-  const handleRemoveTemplateSide = (side: string) => {
-    setTemplateSides(templateSides.filter(s => s !== side))
+  const handleAddTemplateSide = async () => {
+    if (currentSide.trim() === '') return;
+
+    if (templateSides.some(side => side.name === currentSide.trim())) {
+      alert('This side name is already added');
+      return;
+    }
+
+    let iconUrl = undefined;
+
+    // Upload icon if exists
+    if (currentSideIcon) {
+      try {
+        const fileName = `side-icon-${Date.now()}-${currentSideIcon.name}`;
+        const { data, error } = await supabase.storage
+          .from('side-icons')
+          .upload(fileName, currentSideIcon);
+
+        if (error) throw error;
+
+        // Get the public URL
+        const { data: publicUrlData } = supabase.storage
+          .from('side-icons')
+          .getPublicUrl(fileName);
+
+        iconUrl = publicUrlData.publicUrl;
+      } catch (error) {
+        console.error('Error uploading icon:', error);
+        alert('Failed to upload icon. Please try again.');
+        return;
+      }
+    }
+
+    setTemplateSides([...templateSides, {
+      name: currentSide.trim(),
+      icon: iconUrl
+    }]);
+
+    setCurrentSide('');
+    setCurrentSideIcon(null);
+    setSideIconPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+
+  const handleRemoveTemplateSide = (sideName: string) => {
+    setTemplateSides(templateSides.filter(side => side.name !== sideName))
   }
 
   const handleSaveTemplate = async () => {
@@ -213,7 +333,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             .from('game_template_sides')
             .insert(templateSides.map(side => ({
               template_id: editingTemplateId,
-              side_name: side
+              side_name: side.name,
+              icon_url: side.icon
             })))
 
           if (sidesError) throw sidesError
@@ -237,7 +358,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             .from('game_template_sides')
             .insert(templateSides.map(side => ({
               template_id: template.id,
-              side_name: side
+              side_name: side.name,
+              icon_url: side.icon
             })))
 
           if (sidesError) throw sidesError
@@ -254,11 +376,16 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   }
 
   // Get available sides for the selected template
-  const getAvailableSides = (): string[] => {
+  const getAvailableSides = (): Array<{name: string, icon?: string}> => {
     if (!selectedTemplateId) return []
 
     const template = gameTemplates.find(t => t.id === selectedTemplateId)
     return template ? template.sides : []
+  }
+
+  // Check if a side is already selected by another player
+  const isSideSelected = (sideName: string, currentIndex: number): boolean => {
+    return players.some((player, idx) => player.side === sideName && idx !== currentIndex);
   }
 
   return (
@@ -280,8 +407,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         <h1 className="text-2xl font-bold mb-6 text-center">Game Setup</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Game Selection */}
-          <div className="flex space-x-2">
+          {/* Game Selection with Add/Edit button */}
+          <div className="flex items-end space-x-2">
             <div className="flex-grow">
               <label htmlFor="gameSelect" className="block mb-2 font-medium">
                 Game
@@ -289,14 +416,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
               <select
                 id="gameSelect"
                 value={selectedTemplateId || ''}
-                onChange={(e) => {
-                  if (e.target.value === 'edit' && selectedTemplateId) {
-                    // If "Edit" is selected and we have a template selected
-                    handleGameEdit(selectedTemplateId);
-                  } else {
-                    handleTemplateSelect(e.target.value);
-                  }
-                }}
+                onChange={(e) => handleTemplateSelect(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg"
               >
                 <option value="">Select Game</option>
@@ -305,59 +425,49 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                     {template.name}
                   </option>
                 ))}
-                {selectedTemplateId && (
-                  <option value="edit">Edit {gameTemplates.find(t => t.id === selectedTemplateId)?.name}</option>
-                )}
               </select>
             </div>
-            <div className="pt-8">
-              <button
-                type="button"
-                onClick={openAddGameModal}
-                className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-              >
-                Add/Edit Game
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={openAddGameModal}
+              className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
+              {selectedTemplateId ? 'Edit' : 'Add'}
+            </button>
           </div>
 
-          {/* Custom Game Name Input if needed */}
-          {!selectedTemplateId && (
-            <div>
-              <label htmlFor="customGameName" className="block mb-2 font-medium">
-                Custom Game Name
-              </label>
-              <input
-                id="customGameName"
-                type="text"
-                value={gameName}
-                onChange={(e) => setGameName(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
-                placeholder="Enter custom game name"
-                required={!selectedTemplateId}
-              />
-            </div>
-          )}
-
-          {/* Location Input */}
+          {/* Location Input - Made to match Game style */}
           <div>
             <label htmlFor="location" className="block mb-2 font-medium">
               Location
             </label>
-            <input
-              id="location"
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
-              placeholder="Enter game location"
-              required
-            />
+            <div className="flex items-end space-x-2">
+              <input
+                id="location"
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+                placeholder="Enter game location"
+                required
+              />
+            </div>
           </div>
 
           {/* Players Inputs */}
           <div>
-            <label className="block mb-2 font-medium">Players</label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-medium">Players</label>
+              <button
+                type="button"
+                onClick={handleAddPlayer}
+                className="text-blue-500 hover:text-blue-700 text-2xl font-bold"
+                title="Add Player"
+              >
+                +
+              </button>
+            </div>
+
             {players.map((player, index) => (
               <div key={index} className="mb-4 p-3 border rounded-lg relative" style={{ backgroundColor: player.color }}>
                 <div className="flex space-x-2 mb-2">
@@ -370,20 +480,66 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                     required
                   />
 
-                  {getAvailableSides().length > 0 && (
-                    <select
-                      value={player.side || ''}
-                      onChange={(e) => updatePlayer(index, { side: e.target.value })}
-                      className="px-3 py-2 border rounded-lg bg-white"
+                  {/* Side Selection (Icon-based) */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowSideDropdown(showSideDropdown === index ? null : index)}
+                      className="h-full px-3 py-2 border rounded-lg bg-white flex items-center justify-center"
+                      style={{ minWidth: '40px' }}
                     >
-                      <option value="">Select Side</option>
-                      {getAvailableSides().map((side) => (
-                        <option key={side} value={side}>
-                          {side}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                      {player.side && player.sideIcon ? (
+                        <img
+                          src={player.sideIcon}
+                          alt={player.side}
+                          className="w-6 h-6 object-contain"
+                        />
+                      ) : (
+                        <span className="text-gray-500">Side</span>
+                      )}
+                    </button>
+
+                    {/* Dropdown for sides */}
+                    {showSideDropdown === index && (
+                      <div className="absolute z-10 w-48 max-h-64 overflow-y-auto bg-white border rounded-lg shadow-lg left-1/2 transform -translate-x-1/2">
+                        <div className="p-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updatePlayer(index, { side: '', sideIcon: undefined });
+                              setShowSideDropdown(null);
+                            }}
+                            className="w-full text-left p-2 hover:bg-gray-100 rounded"
+                          >
+                            None
+                          </button>
+                          {getAvailableSides().map(side => (
+                            <button
+                              key={side.name}
+                              type="button"
+                              disabled={isSideSelected(side.name, index)}
+                              onClick={() => updatePlayer(index, {
+                                side: side.name,
+                                sideIcon: side.icon
+                              })}
+                              className={`w-full text-left p-2 hover:bg-gray-100 rounded flex items-center space-x-2 ${
+                                isSideSelected(side.name, index) ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
+                            >
+                              {side.icon && (
+                                <img
+                                  src={side.icon}
+                                  alt={side.name}
+                                  className="w-6 h-6 object-contain"
+                                />
+                              )}
+                              <span>{side.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Color Selection */}
@@ -392,16 +548,26 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                     Player Color
                   </label>
                   <div className="flex flex-wrap gap-1">
-                    {playerColors.map((color) => (
-                      <button
-                        key={color.name}
-                        type="button"
-                        title={color.name}
-                        onClick={() => updatePlayer(index, { color: color.value })}
-                        className={`w-6 h-6 rounded-full border ${player.color === color.value ? 'ring-2 ring-blue-500' : ''}`}
-                        style={{ backgroundColor: color.value }}
-                      />
-                    ))}
+                    {playerColors.map((color) => {
+                      // Check if this color is already selected by another player
+                      const isUsedByOther = players.some(
+                        (p, pidx) => p.color === color.value && pidx !== index
+                      );
+
+                      return (
+                        <button
+                          key={color.name}
+                          type="button"
+                          title={color.name}
+                          disabled={isUsedByOther}
+                          onClick={() => updatePlayer(index, { color: color.value })}
+                          className={`w-6 h-6 rounded-full border ${
+                            player.color === color.value ? 'ring-2 ring-blue-500' : ''
+                          } ${isUsedByOther ? 'opacity-30 cursor-not-allowed' : ''}`}
+                          style={{ backgroundColor: color.value }}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -421,13 +587,6 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                 )}
               </div>
             ))}
-            <button
-              type="button"
-              onClick={handleAddPlayer}
-              className="w-full py-2 bg-blue-500 text-white rounded-lg mt-2 hover:bg-blue-600"
-            >
-              Add Player
-            </button>
           </div>
 
           {/* Submit Button */}
@@ -476,34 +635,77 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                 />
               </div>
 
-              {/* Sides Input */}
+              {/* Sides Input with Icon Upload */}
               <div>
                 <label className="block mb-2 font-medium">Sides</label>
-                <div className="flex space-x-2 mb-2">
-                  <input
-                    type="text"
-                    value={currentSide}
-                    onChange={(e) => setCurrentSide(e.target.value)}
-                    className="flex-grow px-3 py-2 border rounded-lg"
-                    placeholder="Enter side name"
-                  />
+                <div className="space-y-2">
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={currentSide}
+                      onChange={(e) => setCurrentSide(e.target.value)}
+                      className="flex-grow px-3 py-2 border rounded-lg"
+                      placeholder="Enter side name"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-2 border rounded-lg bg-gray-100 hover:bg-gray-200"
+                      title="Upload Icon"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                      </svg>
+                    </button>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleSideIconChange}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* Icon Preview */}
+                  {sideIconPreview && (
+                    <div className="flex items-center space-x-2">
+                      <img
+                        src={sideIconPreview}
+                        alt="Icon Preview"
+                        className="w-10 h-10 object-contain border rounded"
+                      />
+                      <span className="text-sm text-gray-600">Icon Preview</span>
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={handleAddTemplateSide}
-                    className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                    className="w-full px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
                   >
-                    Add
+                    Add Side
                   </button>
                 </div>
 
                 {/* Side List */}
-                <div className="mt-2 space-y-2">
+                <div className="mt-4 space-y-2">
                   {templateSides.map((side, index) => (
                     <div key={index} className="flex justify-between items-center p-2 bg-gray-100 rounded-lg">
-                      <span>{side}</span>
+                      <div className="flex items-center space-x-2">
+                        {side.icon && (
+                          <img
+                            src={side.icon}
+                            alt={side.name}
+                            className="w-6 h-6 object-contain"
+                          />
+                        )}
+                        <span>{side.name}</span>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => handleRemoveTemplateSide(side)}
+                        onClick={() => handleRemoveTemplateSide(side.name)}
                         className="p-1 text-red-500 hover:text-red-700"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

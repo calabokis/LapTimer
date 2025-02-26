@@ -7,6 +7,7 @@ interface Player {
   id?: string
   name: string
   side?: string
+  sideIcon?: string
   color?: string
   totalVP: number
   turnVP: number
@@ -17,11 +18,11 @@ interface Turn {
   side?: string
   duration: number
   timestamp: number
-  turnVP: number
+  turnVPs: number[]  // Changed to array to track multiple VP entries
 }
 
 interface PlayerStats {
-  longestTurn: number
+  lastTurn: number  // Changed from longestTurn to lastTurn
   averageTurn: number
   totalTime: number
   turnCount: number
@@ -51,6 +52,7 @@ export default function GameTimer({
   const [showConfirmReset, setShowConfirmReset] = useState(false)
   const [showConfirmEndGame, setShowConfirmEndGame] = useState(false)
   const [shouldUpdatePercentages, setShouldUpdatePercentages] = useState(true)
+  const [turnVPs, setTurnVPs] = useState<number[]>([])  // Track multiple VP entries per turn
 
   // Game setup state
   const [players, setPlayers] = useState<Player[]>([])
@@ -66,7 +68,7 @@ export default function GameTimer({
     // Initialize stats for all players
     players.forEach(player => {
       stats[player.name] = {
-        longestTurn: 0,
+        lastTurn: 0,
         averageTurn: 0,
         totalTime: 0,
         turnCount: 0,
@@ -77,7 +79,7 @@ export default function GameTimer({
     // Calculate stats from turns
     turns.forEach(turn => {
       const playerStat = stats[turn.playerName]
-      playerStat.longestTurn = Math.max(playerStat.longestTurn, turn.duration)
+      playerStat.lastTurn = turn.duration  // Just store the most recent turn duration
       playerStat.totalTime += turn.duration
       playerStat.turnCount += 1
       playerStat.averageTurn = Math.round(playerStat.totalTime / playerStat.turnCount)
@@ -122,6 +124,11 @@ export default function GameTimer({
       hasInitializedPercentages.current = true;
     }
   }, [players, turns]);
+
+  // Initialize turnVPs array when a new turn starts
+  useEffect(() => {
+    setTurnVPs([]);
+  }, [currentPlayerIndex]);
 
   // Check if any player reaches 30 VP
   useEffect(() => {
@@ -209,27 +216,19 @@ export default function GameTimer({
     setPlayers(newPlayers)
   }
 
-  // Add VP and record as a new turn
+  // Add VP to the current turn record
   const handleAddVP = () => {
     if (!isRunning) return;
 
     const currentPlayer = players[currentPlayerIndex];
-    if (currentPlayer.turnVP === 0) return; // Don't record turns with 0 VP
+    if (currentPlayer.turnVP === 0) return; // Don't record 0 VP entries
 
-    // Record current VP entry as a turn
-    const newTurn: Turn = {
-      playerName: currentPlayer.name,
-      side: currentPlayer.side,
-      duration: turnElapsedTime,
-      timestamp: Date.now(),
-      turnVP: currentPlayer.turnVP
-    };
-
-    setTurns(prev => [...prev, newTurn]);
+    // Add this VP to the turnVPs array for this turn
+    setTurnVPs(prev => [...prev, currentPlayer.turnVP]);
 
     // Update player's total VP (don't allow negative total VP)
     const newPlayers = [...players];
-    const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + newPlayers[currentPlayerIndex].turnVP);
+    const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentPlayer.turnVP);
     newPlayers[currentPlayerIndex].totalVP = newTotalVP;
     newPlayers[currentPlayerIndex].turnVP = 0; // Reset turn VP after adding
     setPlayers(newPlayers);
@@ -237,40 +236,45 @@ export default function GameTimer({
 
   // Handle end turn
   const handleEndTurn = async () => {
-    // Record current turn if there's still unrecorded VP
-    const currentPlayer = players[currentPlayerIndex]
+    const currentPlayer = players[currentPlayerIndex];
 
+    // Add current VP to turnVPs if it's not 0
     if (currentPlayer.turnVP !== 0) {
-      const newTurn = {
-        playerName: currentPlayer.name,
-        side: currentPlayer.side,
-        duration: turnElapsedTime,
-        timestamp: Date.now(),
-        turnVP: currentPlayer.turnVP
-      };
-
-      setTurns(prev => [...prev, newTurn])
+      setTurnVPs(prev => [...prev, currentPlayer.turnVP]);
 
       // Update player's total VP (don't allow negative total VP)
-      const newPlayers = [...players]
-      const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + newPlayers[currentPlayerIndex].turnVP)
-      newPlayers[currentPlayerIndex].totalVP = newTotalVP
-      newPlayers[currentPlayerIndex].turnVP = 0
-      setPlayers(newPlayers)
+      const newPlayers = [...players];
+      const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentPlayer.turnVP);
+      newPlayers[currentPlayerIndex].totalVP = newTotalVP;
+      newPlayers[currentPlayerIndex].turnVP = 0;
+      setPlayers(newPlayers);
     }
+
+    // Always record the turn, even if there are no VP changes
+    const newTurn = {
+      playerName: currentPlayer.name,
+      side: currentPlayer.side,
+      duration: turnElapsedTime,
+      timestamp: Date.now(),
+      turnVPs: [...turnVPs]  // Store all VPs for this turn
+    };
+
+    setTurns(prev => [...prev, newTurn]);
 
     // Calculate next player index
     const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
 
+    // Update percentages after each turn, not just at the end of a round
+    setShouldUpdatePercentages(true);
+
     // Reset turn timer and move to next player
-    setTurnElapsedTime(0)
-    setCurrentPlayerIndex(nextPlayerIndex)
+    setTurnElapsedTime(0);
+    setCurrentPlayerIndex(nextPlayerIndex);
+    setTurnVPs([]);  // Clear the turnVPs array for the next player
 
     // Only increment turn counter when a full round has been completed
     if (nextPlayerIndex === 0) {
       setTurnCounter(prev => prev + 1);
-      // Update percentages at the end of each round
-      setShouldUpdatePercentages(true);
     }
   }
 
@@ -286,11 +290,11 @@ export default function GameTimer({
   // Save all game data to Supabase
   const saveGameData = async (isReset = false) => {
     // Update percentages one last time
-    setShouldUpdatePercentages(true)
+    setShouldUpdatePercentages(true);
 
     // Pause the game if it's running
     if (isRunning) {
-      setIsRunning(false)
+      setIsRunning(false);
     }
 
     // Save all game data
@@ -339,13 +343,14 @@ export default function GameTimer({
         playerMap[player.name] = player.id;
       });
 
-      // Now insert all turns - with possibly negative VP values
+      // Now insert all turns - we'll save the sum of turnVPs for each turn
       const turnsToInsert = turns.map(turn => ({
         game_id: gameId,
         player_id: playerMap[turn.playerName] || '',
         duration: turn.duration,
         timestamp: new Date(turn.timestamp).toISOString(),
-        victory_points: turn.turnVP // This can now be negative
+        victory_points: turn.turnVPs.reduce((sum, vp) => sum + vp, 0), // Sum all VPs for this turn
+        vp_details: JSON.stringify(turn.turnVPs) // Store the detailed VP breakdown
       }));
 
       if (turnsToInsert.length > 0) {
@@ -413,22 +418,22 @@ export default function GameTimer({
         saveGameData(true);
       }
 
-      localStorage.removeItem('gameSetup')
-      onReset()
+      localStorage.removeItem('gameSetup');
+      onReset();
     } else {
-      setShowConfirmReset(true)
-      setTimeout(() => setShowConfirmReset(false), 3000) // Hide confirmation after 3 seconds
+      setShowConfirmReset(true);
+      setTimeout(() => setShowConfirmReset(false), 3000); // Hide confirmation after 3 seconds
     }
   }
 
   // Get the background color for a player
   const getPlayerColor = (player: Player) => {
-    return player.color || '#f3f4f6' // Default to light gray if no color
+    return player.color || '#f3f4f6'; // Default to light gray if no color
   }
 
   // If players are not loaded, show nothing
   if (players.length === 0) {
-    return null
+    return null;
   }
 
   return (
@@ -493,8 +498,8 @@ export default function GameTimer({
           <div className="mt-4">
             <div className="space-y-4">
               {players.map((player, index) => {
-                const stats = playerStats[player.name]
-                const isCurrentPlayer = index === currentPlayerIndex
+                const stats = playerStats[player.name];
+                const isCurrentPlayer = index === currentPlayerIndex;
                 return (
                   <div
                     key={player.name}
@@ -502,18 +507,20 @@ export default function GameTimer({
                     style={{ backgroundColor: getPlayerColor(player) }}
                   >
                     <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold">{player.name}</span>
-                      {player.side && (
-                        <span className="text-sm text-gray-600">
-                          ({player.side})
-                        </span>
-                      )}
+                      <span className="font-bold">
+                        {player.name}
+                        {player.side && (
+                          <span className="ml-1 text-gray-700">
+                            - {player.side}
+                          </span>
+                        )}
+                      </span>
                     </div>
                     <div className="grid grid-cols-4 gap-2 text-sm">
                       <div>
-                        <span className="text-gray-600">Longest:</span>
+                        <span className="text-gray-600">Last:</span>
                         <div className="font-mono">
-                          {formatTime(stats.longestTurn)}
+                          {formatTime(stats.lastTurn)}
                         </div>
                       </div>
                       <div>
@@ -527,9 +534,7 @@ export default function GameTimer({
                         <div className="font-mono">
                           {formatTime(stats.totalTime)}
                         </div>
-                      </div>
-                      <div>
-                        <div className="font-mono">
+                        <div className="font-mono text-xs">
                           {stats.percentage}%
                         </div>
                       </div>
@@ -566,6 +571,14 @@ export default function GameTimer({
                       </div>
                     </div>
 
+                    {/* Current TurnVPs Display */}
+                    {isCurrentPlayer && turnVPs.length > 0 && (
+                      <div className="mt-2 text-sm">
+                        <span className="text-gray-600">Turn VPs:</span>
+                        <span className="ml-2 font-mono">{turnVPs.join(', ')}</span>
+                      </div>
+                    )}
+
                     {/* End Turn Button (only shown for current player) */}
                     {isCurrentPlayer && (
                       <button
@@ -581,7 +594,7 @@ export default function GameTimer({
                       </button>
                     )}
                   </div>
-                )
+                );
               })}
             </div>
           </div>
@@ -599,12 +612,16 @@ export default function GameTimer({
                     <span>{turn.playerName}</span>
                     {turn.side && (
                       <span className="ml-2 text-xs text-gray-600">
-                        ({turn.side})
+                        - {turn.side}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center space-x-3">
-                    <span className="font-mono">VP: {turn.turnVP}</span>
+                    {turn.turnVPs.length > 0 && (
+                      <span className="font-mono">
+                        VP: {turn.turnVPs.join(', ')}
+                      </span>
+                    )}
                     <span className="font-mono">{formatTime(turn.duration)}</span>
                   </div>
                 </div>
@@ -614,5 +631,5 @@ export default function GameTimer({
         </div>
       </div>
     </div>
-  )
+  );
 }
