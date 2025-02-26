@@ -28,14 +28,6 @@ interface GameSetupProps {
   }) => void
 }
 
-// Define error type for Supabase errors
-interface SupabaseError {
-  message: string;
-  details?: string;
-  hint?: string;
-  code?: string;
-}
-
 // Vibrant colors for board games
 const playerColors = [
   { name: 'Red', value: '#FF3B30' },
@@ -378,13 +370,14 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       // Refresh templates and close modal
       await fetchGameTemplates()
       setShowGameModal(false)
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Error saving game template:', error);
 
-      // Type guard to ensure we can safely access error properties
-      const errorMessage = error instanceof Error
-        ? error.message
-        : 'Unknown error occurred';
+      // Safe error message extraction
+      let errorMessage = 'Unknown error occurred';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
 
       alert(`Failed to save game template: ${errorMessage}`);
     }
