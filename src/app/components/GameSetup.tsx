@@ -5,6 +5,7 @@ import React, { useState } from 'react'
 interface PlayerSetup {
   name: string
   side?: string
+  color?: string
 }
 
 interface GameSetupProps {
@@ -22,16 +23,31 @@ const gameTypes = [
   { name: 'Other', sides: [] }
 ]
 
+// Common colors for board games
+const playerColors = [
+  { name: 'Red', value: '#FFCDD2' },
+  { name: 'Blue', value: '#BBDEFB' },
+  { name: 'Green', value: '#C8E6C9' },
+  { name: 'Yellow', value: '#FFF9C4' },
+  { name: 'Purple', value: '#E1BEE7' },
+  { name: 'Orange', value: '#FFE0B2' },
+  { name: 'Teal', value: '#B2DFDB' },
+  { name: 'Pink', value: '#F8BBD0' },
+  { name: 'Gray', value: '#F5F5F5' },
+  { name: 'Brown', value: '#D7CCC8' },
+]
+
 export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [gameName, setGameName] = useState('')
   const [location, setLocation] = useState('')
   const [selectedGameType, setSelectedGameType] = useState('')
   const [players, setPlayers] = useState<PlayerSetup[]>([
-    { name: '', side: '' }
+    { name: '', side: '', color: playerColors[0].value }
   ])
 
   const handleAddPlayer = () => {
-    setPlayers([...players, { name: '', side: '' }])
+    const nextColorIndex = players.length % playerColors.length;
+    setPlayers([...players, { name: '', side: '', color: playerColors[nextColorIndex].value }])
   }
 
   const updatePlayer = (index: number, updates: Partial<PlayerSetup>) => {
@@ -42,7 +58,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     // Basic validation
     if (!gameName || !location || players.some(p => !p.name)) {
       alert('Please fill in all required fields')
@@ -124,29 +140,51 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           <div>
             <label className="block mb-2 font-medium">Players</label>
             {players.map((player, index) => (
-              <div key={index} className="mb-2 flex space-x-2">
-                <input
-                  type="text"
-                  value={player.name}
-                  onChange={(e) => updatePlayer(index, { name: e.target.value })}
-                  className="flex-grow px-3 py-2 border rounded-lg"
-                  placeholder={`Player ${index + 1} Name`}
-                  required
-                />
-                {selectedGameSides.length > 0 && (
-                  <select
-                    value={player.side}
-                    onChange={(e) => updatePlayer(index, { side: e.target.value })}
-                    className="px-3 py-2 border rounded-lg"
-                  >
-                    <option value="">Select Side</option>
-                    {selectedGameSides.map((side) => (
-                      <option key={side} value={side}>
-                        {side}
-                      </option>
+              <div key={index} className="mb-4 p-3 border rounded-lg" style={{ backgroundColor: player.color }}>
+                <div className="flex space-x-2 mb-2">
+                  <input
+                    type="text"
+                    value={player.name}
+                    onChange={(e) => updatePlayer(index, { name: e.target.value })}
+                    className="flex-grow px-3 py-2 border rounded-lg bg-white"
+                    placeholder={`Player ${index + 1} Name`}
+                    required
+                  />
+
+                  {selectedGameSides.length > 0 && (
+                    <select
+                      value={player.side}
+                      onChange={(e) => updatePlayer(index, { side: e.target.value })}
+                      className="px-3 py-2 border rounded-lg bg-white"
+                    >
+                      <option value="">Select Side</option>
+                      {selectedGameSides.map((side) => (
+                        <option key={side} value={side}>
+                          {side}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Color Selection */}
+                <div>
+                  <label className="block mb-1 text-sm">
+                    Player Color
+                  </label>
+                  <div className="flex flex-wrap gap-1">
+                    {playerColors.map((color) => (
+                      <button
+                        key={color.name}
+                        type="button"
+                        title={color.name}
+                        onClick={() => updatePlayer(index, { color: color.value })}
+                        className={`w-6 h-6 rounded-full border ${player.color === color.value ? 'ring-2 ring-blue-500' : ''}`}
+                        style={{ backgroundColor: color.value }}
+                      />
                     ))}
-                  </select>
-                )}
+                  </div>
+                </div>
               </div>
             ))}
             <button
