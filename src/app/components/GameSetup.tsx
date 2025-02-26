@@ -151,7 +151,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     setShowGameModal(true)
   }
 
-  const openEditGameModal = (templateId: string) => {
+  // We'll keep this function but add a way to use it from the dropdown
+  const handleGameEdit = (templateId: string) => {
     const template = gameTemplates.find(t => t.id === templateId)
     if (template) {
       setTemplateName(template.name)
@@ -288,7 +289,14 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
               <select
                 id="gameSelect"
                 value={selectedTemplateId || ''}
-                onChange={(e) => handleTemplateSelect(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value === 'edit' && selectedTemplateId) {
+                    // If "Edit" is selected and we have a template selected
+                    handleGameEdit(selectedTemplateId);
+                  } else {
+                    handleTemplateSelect(e.target.value);
+                  }
+                }}
                 className="w-full px-3 py-2 border rounded-lg"
               >
                 <option value="">Select Game</option>
@@ -297,6 +305,9 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                     {template.name}
                   </option>
                 ))}
+                {selectedTemplateId && (
+                  <option value="edit">Edit {gameTemplates.find(t => t.id === selectedTemplateId)?.name}</option>
+                )}
               </select>
             </div>
             <div className="pt-8">
