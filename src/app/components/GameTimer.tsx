@@ -181,9 +181,6 @@ export default function GameTimer({
     return () => clearInterval(intervalId)
   }, [])
 
-  // We no longer automatically save game data when the game stops
-  // Instead we'll save everything at the end of the game
-
   // Format time as mm:ss
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
@@ -204,19 +201,23 @@ export default function GameTimer({
   // Update player's turn VP
   const updatePlayerTurnVP = (index: number, value: number) => {
     const newPlayers = [...players]
+    // Allow negative values for turn VP
     newPlayers[index] = {
       ...newPlayers[index],
-      turnVP: Math.max(0, Math.min(50, value))
+      turnVP: value
     }
     setPlayers(newPlayers)
   }
 
-  // Handle end turn
-  const handleEndTurn = async () => {
-    // Record current turn
-    const currentPlayer = players[currentPlayerIndex]
+  // Add VP and record as a new turn
+  const handleAddVP = () => {
+    if (!isRunning) return;
 
-    const newTurn = {
+    const currentPlayer = players[currentPlayerIndex];
+    if (currentPlayer.turnVP === 0) return; // Don't record turns with 0 VP
+
+    // Record current VP entry as a turn
+    const newTurn: Turn = {
       playerName: currentPlayer.name,
       side: currentPlayer.side,
       duration: turnElapsedTime,
@@ -224,21 +225,39 @@ export default function GameTimer({
       turnVP: currentPlayer.turnVP
     };
 
-    setTurns(prev => [...prev, newTurn])
+    setTurns(prev => [...prev, newTurn]);
 
-    // Update player's total VP
-    const newPlayers = [...players]
-    const newTotalVP = Math.min(50,
-      newPlayers[currentPlayerIndex].totalVP + newPlayers[currentPlayerIndex].turnVP)
-    newPlayers[currentPlayerIndex].totalVP = newTotalVP
-    newPlayers[currentPlayerIndex].turnVP = 0
-    setPlayers(newPlayers)
+    // Update player's total VP (don't allow negative total VP)
+    const newPlayers = [...players];
+    const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + newPlayers[currentPlayerIndex].turnVP);
+    newPlayers[currentPlayerIndex].totalVP = newTotalVP;
+    newPlayers[currentPlayerIndex].turnVP = 0; // Reset turn VP after adding
+    setPlayers(newPlayers);
+  }
 
-    // We don't update VP in Supabase immediately anymore
-    // This will be saved when the game ends
+  // Handle end turn
+  const handleEndTurn = async () => {
+    // Record current turn if there's still unrecorded VP
+    const currentPlayer = players[currentPlayerIndex]
 
-    // We're no longer saving turn data in real-time
-    // All turns will be saved together when the game ends
+    if (currentPlayer.turnVP !== 0) {
+      const newTurn = {
+        playerName: currentPlayer.name,
+        side: currentPlayer.side,
+        duration: turnElapsedTime,
+        timestamp: Date.now(),
+        turnVP: currentPlayer.turnVP
+      };
+
+      setTurns(prev => [...prev, newTurn])
+
+      // Update player's total VP (don't allow negative total VP)
+      const newPlayers = [...players]
+      const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + newPlayers[currentPlayerIndex].turnVP)
+      newPlayers[currentPlayerIndex].totalVP = newTotalVP
+      newPlayers[currentPlayerIndex].turnVP = 0
+      setPlayers(newPlayers)
+    }
 
     // Calculate next player index
     const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
@@ -320,13 +339,13 @@ export default function GameTimer({
         playerMap[player.name] = player.id;
       });
 
-      // Now insert all turns
+      // Now insert all turns - with possibly negative VP values
       const turnsToInsert = turns.map(turn => ({
         game_id: gameId,
         player_id: playerMap[turn.playerName] || '',
         duration: turn.duration,
         timestamp: new Date(turn.timestamp).toISOString(),
-        victory_points: turn.turnVP
+        victory_points: turn.turnVP // This can now be negative
       }));
 
       if (turnsToInsert.length > 0) {
@@ -340,7 +359,7 @@ export default function GameTimer({
         }
       }
 
-      // 3. Update player VP totals
+      // 3. Update player VP totals (these are always non-negative)
       for (const player of players) {
         const playerId = playerMap[player.name];
         if (playerId) {
@@ -445,15 +464,15 @@ export default function GameTimer({
             )}
           </button>
 
-          {/* End Game Button (right) */}
+          {/* End Game Button (right) - Changed to Crown icon */}
           <button
             onClick={handleEndGame}
             className={`p-2 rounded-lg ${showConfirmEndGame ? 'bg-red-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <line x1="9" y1="9" x2="15" y2="15"/>
-              <line x1="15" y1="9" x2="9" y2="15"/>
+              <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/>
+              <path d="M4 19h16"/>
+              <path d="M4 22h16"/>
             </svg>
           </button>
         </div>
@@ -523,17 +542,27 @@ export default function GameTimer({
                         <div className="font-mono text-lg font-bold">{String(player.totalVP).padStart(2, '0')}</div>
                       </div>
 
-                      <div>
+                      <div className="flex items-center space-x-2">
                         <span className="text-sm text-gray-600">Turn VP:</span>
                         <input
                           type="number"
-                          min="0"
-                          max="50"
                           value={player.turnVP}
                           onChange={(e) => updatePlayerTurnVP(index, parseInt(e.target.value) || 0)}
                           className="w-16 font-mono text-lg font-bold bg-white border rounded-md px-2"
                           disabled={!isCurrentPlayer}
                         />
+
+                        {/* Add VP Button */}
+                        {isCurrentPlayer && (
+                          <button
+                            onClick={handleAddVP}
+                            disabled={!isRunning}
+                            className={`px-2 py-1 rounded text-white ${!isRunning ? 'bg-gray-300' : 'bg-green-500 hover:bg-green-600'}`}
+                            title="Add VP"
+                          >
+                            +
+                          </button>
+                        )}
                       </div>
                     </div>
 
