@@ -20,6 +20,12 @@ interface PlayerSetup {
   color?: string
 }
 
+interface TemplateSide {
+  name: string
+  icon?: string
+  previewUrl?: string // For local preview
+}
+
 interface GameSetupProps {
   onGameStart: (gameInfo: {
     gameName: string
@@ -58,7 +64,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
   // State for the Add/Edit Game modal
   const [templateName, setTemplateName] = useState('')
-  const [templateSides, setTemplateSides] = useState<Array<{name: string, icon?: string}>>([])
+  const [templateSides, setTemplateSides] = useState<TemplateSide[]>([])
   const [currentSide, setCurrentSide] = useState('')
   const [currentSideIcon, setCurrentSideIcon] = useState<File | null>(null)
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
@@ -204,7 +210,11 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       const template = gameTemplates.find(t => t.id === selectedTemplateId)
       if (template) {
         setTemplateName(template.name)
-        setTemplateSides([...template.sides])
+        // Convert the sides to the TemplateSide format
+        setTemplateSides(template.sides.map(side => ({
+          name: side.name,
+          icon: side.icon
+        })))
         setCurrentSide('')
         setCurrentSideIcon(null)
         setSideIconPreview(null)
@@ -240,6 +250,15 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         return;
       }
 
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please upload an image file');
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
       setCurrentSideIcon(file);
 
       // Create preview
@@ -260,16 +279,29 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
 
     let iconUrl = undefined;
+    let previewUrl = undefined;
+
+    // Keep the preview URL for display in the list
+    if (sideIconPreview) {
+      previewUrl = sideIconPreview;
+    }
 
     // Upload icon if exists
     if (currentSideIcon) {
       try {
         const fileName = `side-icon-${Date.now()}-${currentSideIcon.name}`;
+
         const { error } = await supabase.storage
           .from('side-icons')
-          .upload(fileName, currentSideIcon);
+          .upload(fileName, currentSideIcon, {
+            cacheControl: '3600',
+            upsert: false
+          });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Storage upload error:', error);
+          throw error;
+        }
 
         // Get the public URL
         const { data: publicUrlData } = supabase.storage
@@ -277,6 +309,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           .getPublicUrl(fileName);
 
         iconUrl = publicUrlData.publicUrl;
+        console.log('Uploaded icon URL:', iconUrl); // Add logging
       } catch (error) {
         console.error('Error uploading icon:', error);
         alert('Failed to upload icon. Please try again.');
@@ -284,11 +317,14 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       }
     }
 
+    // Add the new side to the template sides
     setTemplateSides([...templateSides, {
       name: currentSide.trim(),
-      icon: iconUrl
+      icon: iconUrl,
+      previewUrl: previewUrl
     }]);
 
+    // Reset inputs for next side
     setCurrentSide('');
     setCurrentSideIcon(null);
     setSideIconPreview(null);
@@ -303,30 +339,43 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
   const handleSaveTemplate = async () => {
     if (templateName.trim() === '') {
-      alert('Please enter a game name')
-      return
+      alert('Please enter a game name');
+      return;
     }
 
     try {
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+
       if (editingTemplateId) {
         // Update existing template
+        console.log('Updating template:', editingTemplateId);
+
         const { error: updateError } = await supabase
           .from('game_templates')
           .update({
             name: templateName,
             updated_at: new Date().toISOString()
           })
-          .eq('id', editingTemplateId)
+          .eq('id', editingTemplateId);
 
-        if (updateError) throw updateError
+        if (updateError) {
+          console.error('Update template error:', updateError);
+          throw updateError;
+        }
 
         // Delete existing sides
         const { error: deleteError } = await supabase
           .from('game_template_sides')
           .delete()
-          .eq('template_id', editingTemplateId)
+          .eq('template_id', editingTemplateId);
 
-        if (deleteError) throw deleteError
+        if (deleteError) {
+          console.error('Delete sides error:', deleteError);
+          throw deleteError;
+        }
 
         // Add new sides if any
         if (templateSides.length > 0) {
@@ -335,41 +384,52 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             .insert(templateSides.map(side => ({
               template_id: editingTemplateId,
               side_name: side.name,
-              icon_url: side.icon
-            })))
+              icon_url: side.icon || null
+            })));
 
-          if (sidesError) throw sidesError
+          if (sidesError) {
+            console.error('Insert sides error:', sidesError);
+            throw sidesError;
+          }
         }
       } else {
         // Create new template
+        console.log('Creating new template');
+
         const { data: template, error: templateError } = await supabase
           .from('game_templates')
           .insert({
             name: templateName,
-            user_id: (await supabase.auth.getUser()).data.user?.id
+            user_id: userId
           })
           .select()
-          .single()
+          .single();
 
-        if (templateError) throw templateError
+        if (templateError) {
+          console.error('Create template error:', templateError);
+          throw templateError;
+        }
 
         // Add sides if any
-        if (templateSides.length > 0) {
+        if (templateSides.length > 0 && template) {
           const { error: sidesError } = await supabase
             .from('game_template_sides')
             .insert(templateSides.map(side => ({
               template_id: template.id,
               side_name: side.name,
-              icon_url: side.icon
-            })))
+              icon_url: side.icon || null
+            })));
 
-          if (sidesError) throw sidesError
+          if (sidesError) {
+            console.error('Insert sides error:', sidesError);
+            throw sidesError;
+          }
         }
       }
 
       // Refresh templates and close modal
-      await fetchGameTemplates()
-      setShowGameModal(false)
+      await fetchGameTemplates();
+      setShowGameModal(false);
     } catch (error) {
       console.error('Error saving game template:', error);
 
@@ -377,6 +437,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       let errorMessage = 'Unknown error occurred';
       if (error instanceof Error) {
         errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        errorMessage = JSON.stringify(error);
       }
 
       alert(`Failed to save game template: ${errorMessage}`);
@@ -708,9 +770,9 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                   {templateSides.map((side, index) => (
                     <div key={index} className="flex justify-between items-center p-2 bg-gray-100 rounded-lg">
                       <div className="flex items-center space-x-2">
-                        {side.icon && (
+                        {(side.icon || side.previewUrl) && (
                           <Image
-                            src={side.icon}
+                            src={side.icon || side.previewUrl || ''}
                             alt={side.name}
                             width={24}
                             height={24}
