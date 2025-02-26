@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import Image from 'next/image'
 
 interface GameTemplate {
   id: string
@@ -264,7 +265,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     if (currentSideIcon) {
       try {
         const fileName = `side-icon-${Date.now()}-${currentSideIcon.name}`;
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
           .from('side-icons')
           .upload(fileName, currentSideIcon);
 
@@ -489,10 +490,12 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                       style={{ minWidth: '40px' }}
                     >
                       {player.side && player.sideIcon ? (
-                        <img
+                        <Image
                           src={player.sideIcon}
                           alt={player.side}
-                          className="w-6 h-6 object-contain"
+                          width={24}
+                          height={24}
+                          className="object-contain"
                         />
                       ) : (
                         <span className="text-gray-500">Side</span>
@@ -527,10 +530,12 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                               }`}
                             >
                               {side.icon && (
-                                <img
+                                <Image
                                   src={side.icon}
                                   alt={side.name}
-                                  className="w-6 h-6 object-contain"
+                                  width={24}
+                                  height={24}
+                                  className="object-contain"
                                 />
                               )}
                               <span>{side.name}</span>
@@ -671,10 +676,12 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                   {/* Icon Preview */}
                   {sideIconPreview && (
                     <div className="flex items-center space-x-2">
-                      <img
+                      <Image
                         src={sideIconPreview}
                         alt="Icon Preview"
-                        className="w-10 h-10 object-contain border rounded"
+                        width={40}
+                        height={40}
+                        className="object-contain border rounded"
                       />
                       <span className="text-sm text-gray-600">Icon Preview</span>
                     </div>
@@ -695,10 +702,12 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                     <div key={index} className="flex justify-between items-center p-2 bg-gray-100 rounded-lg">
                       <div className="flex items-center space-x-2">
                         {side.icon && (
-                          <img
+                          <Image
                             src={side.icon}
                             alt={side.name}
-                            className="w-6 h-6 object-contain"
+                            width={24}
+                            height={24}
+                            className="object-contain"
                           />
                         )}
                         <span>{side.name}</span>
