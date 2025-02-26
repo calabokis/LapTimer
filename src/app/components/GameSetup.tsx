@@ -252,7 +252,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   }
 
   const handleAddTemplateSide = async () => {
-    if (currentSide.trim() === '') return;
+    if (currentSide.trim() === '') {
+      alert('Please enter a side name');
+      return;
+    }
 
     if (templateSides.some(side => side.name === currentSide.trim())) {
       alert('This side name is already added');
@@ -264,22 +267,53 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     // Upload icon if exists
     if (currentSideIcon) {
       try {
-        const fileName = `side-icon-${Date.now()}-${currentSideIcon.name}`;
-        const { error } = await supabase.storage
-          .from('side-icons')
-          .upload(fileName, currentSideIcon);
+        const fileName = `side-icon-${Date.now()}-${currentSideIcon.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
 
-        if (error) throw error;
+        console.log('Uploading file:', fileName);
+
+        // Check if user is authenticated
+        const { data: userData } = await supabase.auth.getUser();
+        if (!userData.user) {
+          throw new Error('User not authenticated. Please sign in again.');
+        }
+
+        // Ensure the bucket exists
+        const { data: buckets } = await supabase.storage.listBuckets();
+        console.log('Available buckets:', buckets);
+
+        // Upload to storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('side-icons')
+          .upload(fileName, currentSideIcon, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Upload error details:', uploadError);
+          throw new Error(`Upload failed: ${uploadError.message}`);
+        }
+
+        if (!uploadData) {
+          throw new Error('Upload completed but no data returned');
+        }
+
+        console.log('Upload successful:', uploadData);
 
         // Get the public URL
         const { data: publicUrlData } = supabase.storage
           .from('side-icons')
           .getPublicUrl(fileName);
 
+        if (!publicUrlData || !publicUrlData.publicUrl) {
+          throw new Error('Could not get public URL');
+        }
+
         iconUrl = publicUrlData.publicUrl;
-      } catch (error) {
+        console.log('Public URL generated:', iconUrl);
+      } catch (error: any) {
         console.error('Error uploading icon:', error);
-        alert('Failed to upload icon. Please try again.');
+        alert(`Failed to upload icon: ${error.message || 'Unknown error'}. Please try again.`);
         return;
       }
     }
@@ -318,7 +352,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           })
           .eq('id', editingTemplateId)
 
-        if (updateError) throw updateError
+        if (updateError) {
+          console.error('Error updating template:', updateError);
+          throw updateError;
+        }
 
         // Delete existing sides
         const { error: deleteError } = await supabase
@@ -326,7 +363,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           .delete()
           .eq('template_id', editingTemplateId)
 
-        if (deleteError) throw deleteError
+        if (deleteError) {
+          console.error('Error deleting existing sides:', deleteError);
+          throw deleteError;
+        }
 
         // Add new sides if any
         if (templateSides.length > 0) {
@@ -338,20 +378,35 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
               icon_url: side.icon
             })))
 
-          if (sidesError) throw sidesError
+          if (sidesError) {
+            console.error('Error inserting sides for edit:', sidesError);
+            throw sidesError;
+          }
         }
       } else {
         // Create new template
+        const user = await supabase.auth.getUser();
+        if (!user.data.user?.id) {
+          throw new Error('User not authenticated');
+        }
+
+        console.log('Creating template with user ID:', user.data.user.id);
+
         const { data: template, error: templateError } = await supabase
           .from('game_templates')
           .insert({
             name: templateName,
-            user_id: (await supabase.auth.getUser()).data.user?.id
+            user_id: user.data.user.id
           })
           .select()
-          .single()
+          .single();
 
-        if (templateError) throw templateError
+        if (templateError) {
+          console.error('Error creating template:', templateError);
+          throw templateError;
+        }
+
+        console.log('Template created successfully:', template);
 
         // Add sides if any
         if (templateSides.length > 0) {
@@ -361,18 +416,22 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
               template_id: template.id,
               side_name: side.name,
               icon_url: side.icon
-            })))
+            })));
 
-          if (sidesError) throw sidesError
+          if (sidesError) {
+            console.error('Error inserting sides for new template:', sidesError);
+            throw sidesError;
+          }
         }
       }
 
       // Refresh templates and close modal
-      await fetchGameTemplates()
-      setShowGameModal(false)
-    } catch (error) {
-      console.error('Error saving game template:', error)
-      alert('Failed to save game template. Please try again.')
+      await fetchGameTemplates();
+      setShowGameModal(false);
+    } catch (error: any) {
+      console.error('Error saving game template:', error);
+      // Show more detailed error message
+      alert(`Failed to save game template: ${error.message || 'Unknown error'}`);
     }
   }
 
