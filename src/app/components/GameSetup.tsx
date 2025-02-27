@@ -21,9 +21,9 @@ interface PlayerSetup {
 }
 
 interface TemplateSide {
-  name: string
-  icon?: string
-  previewUrl?: string // For local preview
+  name: string;
+  icon?: string;
+  previewUrl?: string | null; // Changed to allow null values
 }
 
 interface GameSetupProps {
