@@ -436,13 +436,6 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       let errorMessage = 'Unknown error occurred';
       if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (typeof error === 'object' && error !==
-      console.error('Error saving game template:', error);
-
-      // Safe error message extraction
-      let errorMessage = 'Unknown error occurred';
-      if (error instanceof Error) {
-        errorMessage = error.message;
       } else if (typeof error === 'object' && error !== null) {
         errorMessage = JSON.stringify(error);
       }
