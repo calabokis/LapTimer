@@ -576,7 +576,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                                 e.currentTarget.style.display = 'none';
                                 const parent = e.currentTarget.parentElement;
                                 if (parent) {
-                                  parent.innerHTML = `<span class="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold">${player.side.charAt(0).toUpperCase()}</span>`;
+                                  parent.innerHTML = `<span class="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold">${player.side?.charAt(0).toUpperCase() || '?'}</span>`;
                                 }
                               }}
                             />
