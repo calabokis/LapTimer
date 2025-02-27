@@ -86,6 +86,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
       if (error) throw error
 
+      console.log('Fetched templates:', templates);
+
       // For each template, fetch its sides
       const templatesWithSides = await Promise.all(
         templates.map(async (template) => {
@@ -96,6 +98,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             .order('created_at')
 
           if (sidesError) throw sidesError
+
+          console.log(`Template ${template.name} sides:`, sides);
 
           return {
             id: template.id,
@@ -279,12 +283,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
 
     let iconUrl = undefined;
-    let previewUrl = undefined;
-
-    // Keep the preview URL for display in the list
-    if (sideIconPreview) {
-      previewUrl = sideIconPreview;
-    }
+    let previewUrl = sideIconPreview; // Store the current preview
 
     // Upload icon if exists
     if (currentSideIcon) {
@@ -309,7 +308,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           .getPublicUrl(fileName);
 
         iconUrl = publicUrlData.publicUrl;
-        console.log('Uploaded icon URL:', iconUrl); // Add logging
+        console.log('Uploaded icon URL:', iconUrl);
       } catch (error) {
         console.error('Error uploading icon:', error);
         alert('Failed to upload icon. Please try again.');
@@ -317,14 +316,14 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       }
     }
 
-    // Add the new side to the template sides
+    // Important: Add the new side BEFORE clearing the input states
     setTemplateSides([...templateSides, {
       name: currentSide.trim(),
       icon: iconUrl,
       previewUrl: previewUrl
     }]);
 
-    // Reset inputs for next side
+    // NOW reset inputs for the next side
     setCurrentSide('');
     setCurrentSideIcon(null);
     setSideIconPreview(null);
@@ -437,6 +436,13 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       let errorMessage = 'Unknown error occurred';
       if (error instanceof Error) {
         errorMessage = error.message;
+      } else if (typeof error === 'object' && error !==
+      console.error('Error saving game template:', error);
+
+      // Safe error message extraction
+      let errorMessage = 'Unknown error occurred';
+      if (error instanceof Error) {
+        errorMessage = error.message;
       } else if (typeof error === 'object' && error !== null) {
         errorMessage = JSON.stringify(error);
       }
@@ -450,7 +456,12 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     if (!selectedTemplateId) return []
 
     const template = gameTemplates.find(t => t.id === selectedTemplateId)
-    return template ? template.sides : []
+    if (!template) return []
+
+    console.log('Available sides for template:', template.sides);
+
+    // Filter out sides with undefined or null names
+    return template.sides.filter(side => !!side.name);
   }
 
   // Check if a side is already selected by another player
@@ -550,66 +561,120 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                     required
                   />
 
-                  {/* Side Selection (Icon-based) */}
+                  {/* Side Selection (Icon-based) - Improved */}
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setShowSideDropdown(showSideDropdown === index ? null : index)}
                       className="h-full px-3 py-2 border rounded-lg bg-white flex items-center justify-center"
-                      style={{ minWidth: '40px' }}
+                      style={{ minWidth: '44px' }}
                     >
-                      {player.side && player.sideIcon ? (
-                        <Image
-                          src={player.sideIcon}
-                          alt={player.side}
-                          width={24}
-                          height={24}
-                          className="object-contain"
-                        />
+                      {player.side ? (
+                        <div className="flex items-center justify-center">
+                          {player.sideIcon ? (
+                            <Image
+                              src={player.sideIcon}
+                              alt={player.side}
+                              width={24}
+                              height={24}
+                              className="object-contain"
+                              onError={(e) => {
+                                // Show the first letter of side name instead if image fails
+                                e.currentTarget.style.display = 'none';
+                                const parent = e.currentTarget.parentElement;
+                                if (parent) {
+                                  parent.innerHTML = `<span class="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold">${player.side.charAt(0).toUpperCase()}</span>`;
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span className="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold">
+                              {player.side.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
                       ) : (
-                        <span className="text-gray-500">Side</span>
+                        <div className="text-gray-500 flex items-center space-x-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 8v8"></path>
+                            <path d="M8 12h8"></path>
+                          </svg>
+                          <span className="text-sm">Side</span>
+                        </div>
                       )}
                     </button>
 
-                    {/* Dropdown for sides */}
+                    {/* Dropdown for sides - Icon focused */}
                     {showSideDropdown === index && (
-                      <div className="absolute z-10 w-48 max-h-64 overflow-y-auto bg-white border rounded-lg shadow-lg left-1/2 transform -translate-x-1/2">
-                        <div className="p-2">
+                      <div className="absolute z-10 w-64 bg-white border rounded-lg shadow-lg left-1/2 transform -translate-x-1/2">
+                        <div className="p-3">
+                          <h4 className="text-sm font-medium mb-2 text-gray-700">Select Side</h4>
+
+                          {/* None option */}
                           <button
                             type="button"
                             onClick={() => {
                               updatePlayer(index, { side: '', sideIcon: undefined });
                               setShowSideDropdown(null);
                             }}
-                            className="w-full text-left p-2 hover:bg-gray-100 rounded"
+                            className="w-full text-left p-2 mb-2 hover:bg-gray-100 rounded flex items-center"
                           >
-                            None
+                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-2">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                              </svg>
+                            </div>
+                            <span>None</span>
                           </button>
-                          {getAvailableSides().map(side => (
-                            <button
-                              key={side.name}
-                              type="button"
-                              disabled={isSideSelected(side.name, index)}
-                              onClick={() => updatePlayer(index, {
-                                side: side.name,
-                                sideIcon: side.icon
-                              })}
-                              className={`w-full text-left p-2 hover:bg-gray-100 rounded flex items-center space-x-2 ${
-                                isSideSelected(side.name, index) ? 'opacity-50 cursor-not-allowed' : ''
-                              }`}
-                            >
-                              {side.icon && (
-                                <Image
-                                  src={side.icon}
-                                  alt={side.name}
-                                  width={24}
-                                  height={24}
-                                  className="object-contain"
-                                />
-                              )}
-                              <span>{side.name}</span>
-                            </button>
-                          ))}
+
+                          {/* Sides grid */}
+                          <div className="grid grid-cols-3 gap-2">
+                            {getAvailableSides().map(side => {
+                              const isDisabled = isSideSelected(side.name, index);
+                              return (
+                                <button
+                                  key={side.name}
+                                  type="button"
+                                  disabled={isDisabled}
+                                  onClick={() => updatePlayer(index, {
+                                    side: side.name,
+                                    sideIcon: side.icon
+                                  })}
+                                  title={side.name}
+                                  className={`p-2 rounded hover:bg-gray-100 flex flex-col items-center ${
+                                    isDisabled ? 'opacity-40 cursor-not-allowed' : ''
+                                  }`}
+                                >
+                                  <div className="w-10 h-10 bg-gray-50 rounded flex items-center justify-center mb-1 border">
+                                    {side.icon ? (
+                                      <Image
+                                        src={side.icon}
+                                        alt={side.name}
+                                        width={32}
+                                        height={32}
+                                        className="object-contain"
+                                        onError={(e) => {
+                                          // Fall back to first letter of side name
+                                          e.currentTarget.style.display = 'none';
+                                          const parent = e.currentTarget.parentElement;
+                                          if (parent) {
+                                            parent.innerHTML = side.name.charAt(0).toUpperCase();
+                                            parent.style.fontSize = '16px';
+                                            parent.style.fontWeight = 'bold';
+                                          }
+                                        }}
+                                      />
+                                    ) : (
+                                      <span className="text-lg font-bold">{side.name.charAt(0).toUpperCase()}</span>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-center truncate max-w-full">{side.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -777,6 +842,18 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                             width={24}
                             height={24}
                             className="object-contain"
+                            onError={(e) => {
+                              console.error('Error loading image:', side.icon || side.previewUrl);
+                              // Fallback to a placeholder if image fails to load
+                              e.currentTarget.style.display = 'none';
+                              const parent = e.currentTarget.parentElement;
+                              if (parent) {
+                                const letter = document.createElement('span');
+                                letter.className = 'w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold';
+                                letter.innerText = side.name.charAt(0).toUpperCase();
+                                parent.prepend(letter);
+                              }
+                            }}
                           />
                         )}
                         <span>{side.name}</span>
