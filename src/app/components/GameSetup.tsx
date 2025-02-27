@@ -283,7 +283,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
 
     let iconUrl = undefined;
-    let previewUrl = sideIconPreview; // Store the current preview
+    const previewUrl = sideIconPreview; // Store the current preview
 
     // Upload icon if exists
     if (currentSideIcon) {
