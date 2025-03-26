@@ -18,6 +18,7 @@ interface PlayerSetup {
   side?: string
   sideIcon?: string
   color?: string
+  backgroundImage?: string
 }
 
 interface TemplateSide {
@@ -71,6 +72,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [sideIconPreview, setSideIconPreview] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Background image upload functionality
+  const [currentPlayerBackgroundImage, setCurrentPlayerBackgroundImage] = useState<File | null>(null);
+  const [backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
+  const backgroundImageInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch game templates on component mount
   useEffect(() => {
@@ -127,6 +132,74 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
   }
 
+  const handleBackgroundImageChange = (e: React.ChangeEvent<HTMLInputElement>, playerIndex: number) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+
+      // Check file size
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`File size exceeds the limit (${MAX_FILE_SIZE / 1024 / 1024}MB)`);
+        e.target.value = '';
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please upload an image file');
+        e.target.value = '';
+        return;
+      }
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBackgroundImagePreview(reader.result as string);
+
+        // Upload to Supabase
+        uploadPlayerBackground(file, playerIndex);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Function to upload background image to Supabase
+  const uploadPlayerBackground = async (file: File, playerIndex: number) => {
+    try {
+      const fileName = `player-bg-${Date.now()}-${file.name}`;
+
+      const { error } = await supabase.storage
+        .from('player-backgrounds')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        console.error('Storage upload error:', error);
+        throw error;
+      }
+
+      // Get the public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('player-backgrounds')
+        .getPublicUrl(fileName);
+
+      const backgroundUrl = publicUrlData.publicUrl;
+      console.log('Uploaded background URL:', backgroundUrl);
+
+      // Update player with background image URL
+      const newPlayers = [...players];
+      newPlayers[playerIndex] = {
+        ...newPlayers[playerIndex],
+        backgroundImage: backgroundUrl
+      };
+      setPlayers(newPlayers);
+    } catch (error) {
+      console.error('Error uploading player background:', error);
+      alert('Failed to upload background image. Please try again.');
+    }
+  };
+
   const handleAddPlayer = () => {
     // Filter out colors that are already used by other players
     const usedColors = players.map(p => p.color);
@@ -170,6 +243,17 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       if (sideInUse) {
         alert('This side is already chosen by another player');
         return;
+      }
+
+      // Find the matching side to get its icon URL
+      if (selectedTemplateId) {
+        const template = gameTemplates.find(t => t.id === selectedTemplateId);
+        if (template) {
+          const side = template.sides.find(s => s.name === updates.side);
+          if (side && side.icon) {
+            updates.sideIcon = side.icon;
+          }
+        }
       }
     }
 
@@ -439,6 +523,67 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       } else if (typeof error === 'object' && error !== null) {
         errorMessage = JSON.stringify(error);
       }
+      {/* Color Selection */}
+      <div>
+        <label className="block mb-1 text-sm">
+          Player Color
+        </label>
+        <div className="flex flex-wrap gap-1">
+          {playerColors.map((color) => {
+            // ... your existing color selection code ...
+          })}
+        </div>
+      </div>
+
+      {/* Background Image Upload - ADD THIS SECTION */}
+      <div className="mt-2">
+        <label className="block mb-1 text-sm">
+          Player Background
+        </label>
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => backgroundImageInputRef.current?.click()}
+            className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg flex items-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            Set Background
+          </button>
+          <input
+            type="file"
+            ref={backgroundImageInputRef}
+            onChange={(e) => handleBackgroundImageChange(e, index)}
+            accept="image/*"
+            className="hidden"
+          />
+          {player.backgroundImage && (
+            <span className="text-xs text-green-600">✓ Image set</span>
+            <button
+          type="button"
+          onClick={() => {
+            const newPlayers = [...players];
+            newPlayers[index] = {
+              ...newPlayers[index],
+              backgroundImage: undefined
+            };
+            setPlayers(newPlayers);
+          }}
+          className="px-2 py-1 text-sm bg-red-100 hover:bg-red-200 text-red-700 rounded-lg"
+          title="Remove background"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </>
+    )}
+  </div>
+      </div>
 
       alert(`Failed to save game template: ${errorMessage}`);
     }
@@ -543,16 +688,22 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             </div>
 
             {players.map((player, index) => (
-              <div key={index} className="mb-4 p-3 border rounded-lg relative" style={{ backgroundColor: player.color }}>
-                <div className="flex space-x-2 mb-2">
-                  <input
-                    type="text"
-                    value={player.name}
-                    onChange={(e) => updatePlayer(index, { name: e.target.value })}
-                    className="flex-grow px-3 py-2 border rounded-lg bg-white"
-                    placeholder={`Player ${index + 1} Name`}
-                    required
-                  />
+              <div
+              {player.backgroundImage && (
+                <div
+                  className="absolute inset-0 rounded-lg"
+                  style={{ backgroundColor: `${player.color}90` }} // 90 adds 56% opacity
+                />
+              )}
+                key={index}
+                className="mb-4 p-3 border rounded-lg relative"
+                style={{
+                  backgroundColor: player.color,
+                  backgroundImage: player.backgroundImage ? `url(${player.backgroundImage})` : 'none',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+                }}
+              >
 
                   {/* Side Selection (Icon-based) - Improved */}
                   <div className="relative">
@@ -771,7 +922,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
               <div>
                 <label className="block mb-2 font-medium">Sides</label>
                 <div className="space-y-2">
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-2 mb-2 relative">
                     <input
                       type="text"
                       value={currentSide}

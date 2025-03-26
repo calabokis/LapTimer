@@ -235,48 +235,61 @@ export default function GameTimer({
   }
 
   // Handle end turn
-  const handleEndTurn = async () => {
-    const currentPlayer = players[currentPlayerIndex];
+const handleEndTurn = async () => {
+  const currentPlayer = players[currentPlayerIndex];
 
-    // Add current VP to turnVPs if it's not 0
-    if (currentPlayer.turnVP !== 0) {
-      setTurnVPs(prev => [...prev, currentPlayer.turnVP]);
+  // Add current VP to turnVPs if it's not 0
+  if (currentPlayer.turnVP !== 0) {
+    // Add the current turnVP to the array
+    const updatedTurnVPs = [...turnVPs, currentPlayer.turnVP];
+    setTurnVPs(updatedTurnVPs);
 
-      // Update player's total VP (don't allow negative total VP)
-      const newPlayers = [...players];
-      const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentPlayer.turnVP);
-      newPlayers[currentPlayerIndex].totalVP = newTotalVP;
-      newPlayers[currentPlayerIndex].turnVP = 0;
-      setPlayers(newPlayers);
-    }
+    // Update player's total VP (don't allow negative total VP)
+    const newPlayers = [...players];
+    const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentPlayer.turnVP);
+    newPlayers[currentPlayerIndex].totalVP = newTotalVP;
+    newPlayers[currentPlayerIndex].turnVP = 0;
+    setPlayers(newPlayers);
 
-    // Always record the turn, even if there are no VP changes
+    // Use the updated turnVPs array in the new turn
     const newTurn = {
       playerName: currentPlayer.name,
       side: currentPlayer.side,
       duration: turnElapsedTime,
       timestamp: Date.now(),
-      turnVPs: [...turnVPs]  // Store all VPs for this turn
+      turnVPs: updatedTurnVPs  // Use the updated array including the current turnVP
     };
 
     setTurns(prev => [...prev, newTurn]);
+  } else {
+    // Even if there are no current VP changes, we should include previous VP changes from this turn
+    const newTurn = {
+      playerName: currentPlayer.name,
+      side: currentPlayer.side,
+      duration: turnElapsedTime,
+      timestamp: Date.now(),
+      turnVPs: turnVPs  // Use existing turnVPs
+    };
 
-    // Calculate next player index
-    const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
-
-    // Update percentages after each turn, not just at the end of a round
-    setShouldUpdatePercentages(true);
-
-    // Reset turn timer and move to next player
-    setTurnElapsedTime(0);
-    setCurrentPlayerIndex(nextPlayerIndex);
-    setTurnVPs([]);  // Clear the turnVPs array for the next player
-
-    // Only increment turn counter when a full round has been completed
-    if (nextPlayerIndex === 0) {
-      setTurnCounter(prev => prev + 1);
-    }
+    setTurns(prev => [...prev, newTurn]);
   }
+
+  // Calculate next player index
+  const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
+
+  // Update percentages after each turn, not just at the end of a round
+  setShouldUpdatePercentages(true);
+
+  // Reset turn timer and move to next player
+  setTurnElapsedTime(0);
+  setCurrentPlayerIndex(nextPlayerIndex);
+  setTurnVPs([]);  // Clear the turnVPs array for the next player
+
+  // Only increment turn counter when a full round has been completed
+  if (nextPlayerIndex === 0) {
+    setTurnCounter(prev => prev + 1);
+  }
+}
 
   // Toggle timer
   const toggleTimer = () => {
@@ -513,6 +526,23 @@ export default function GameTimer({
                           <span className="ml-1 text-gray-700">
                             - {player.side}
                           </span>
+                        )}
+                        {player.side && player.sideIcon && (
+                          <div className="ml-2 flex items-center">
+                            <img
+                              src={player.sideIcon}
+                              alt={player.side}
+                              className="w-5 h-5 object-contain"
+                              onError={(e) => {
+                                // Fallback if image fails to load
+                                e.currentTarget.style.display = 'none';
+                                const span = document.createElement('span');
+                                span.className = 'w-5 h-5 inline-flex items-center justify-center bg-gray-200 rounded-full text-xs font-bold';
+                                span.innerText = player.side.charAt(0).toUpperCase();
+                                e.currentTarget.parentElement?.appendChild(span);
+                              }}
+                            />
+                          </div>
                         )}
                       </span>
                     </div>
