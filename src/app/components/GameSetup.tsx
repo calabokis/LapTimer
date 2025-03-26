@@ -61,7 +61,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [showGameModal, setShowGameModal] = useState(false)
   const [gameTemplates, setGameTemplates] = useState<GameTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
-  const [_showSideDropdown, setShowSideDropdown] = useState<number | null>(null);
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [showSideDropdown, setShowSideDropdown] = useState<number | null>(null);
 
   // State for the Add/Edit Game modal
   const [templateName, setTemplateName] = useState('')
@@ -70,7 +71,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [currentSideIcon, setCurrentSideIcon] = useState<File | null>(null)
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
   const [sideIconPreview, setSideIconPreview] = useState<string | null>(null)
-  const [_backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Use a different approach for player backgrounds
