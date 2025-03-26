@@ -75,7 +75,11 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Background image upload functionality
-  const backgroundImageInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const backgroundImageInputRefs = useref={(el) => {
+  if (backgroundImageInputRefs.current) {
+    backgroundImageInputRefs.current[index] = el;
+  }
+}}
 
   // Fetch game templates on component mount
   useEffect(() => {
