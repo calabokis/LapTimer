@@ -75,11 +75,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Background image upload functionality
-  const backgroundImageInputRefs = useref={(el) => {
-  if (backgroundImageInputRefs.current) {
-    backgroundImageInputRefs.current[index] = el;
-  }
-}}
+  const backgroundImageInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Fetch game templates on component mount
   useEffect(() => {
@@ -91,9 +87,9 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       const { data: templates, error } = await supabase
         .from('game_templates')
         .select('id, name')
-        .order('name')
+        .order('name');
 
-      if (error) throw error
+      if (error) throw error;
 
       console.log('Fetched templates:', templates);
 
@@ -104,9 +100,9 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             .from('game_template_sides')
             .select('side_name, icon_url')
             .eq('template_id', template.id)
-            .order('created_at')
+            .order('created_at');
 
-          if (sidesError) throw sidesError
+          if (sidesError) throw sidesError;
 
           console.log(`Template ${template.name} sides:`, sides);
 
@@ -117,22 +113,22 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
               name: s.side_name,
               icon: s.icon_url
             }))
-          }
+          };
         })
-      )
+      );
 
-      setGameTemplates(templatesWithSides)
+      setGameTemplates(templatesWithSides);
     } catch (error) {
-      console.error('Error fetching game templates:', error)
+      console.error('Error fetching game templates:', error);
     }
-  }
+  };
 
   const handleTemplateSelect = (templateId: string) => {
-    setSelectedTemplateId(templateId)
+    setSelectedTemplateId(templateId);
 
-    const selectedTemplate = gameTemplates.find(t => t.id === templateId)
+    const selectedTemplate = gameTemplates.find(t => t.id === templateId);
     if (selectedTemplate) {
-      setGameName(selectedTemplate.name)
+      setGameName(selectedTemplate.name);
     }
   }
 
@@ -386,17 +382,17 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       ? availableColors[0].value
       : playerColors[0].value;
 
-    setPlayers([...players, { name: '', side: '', color: nextColor }])
+    setPlayers([...players, { name: '', side: '', color: nextColor }]);
   }
 
   const handleRemovePlayer = (index: number) => {
-    const newPlayers = [...players]
-    newPlayers.splice(index, 1)
-    setPlayers(newPlayers)
+    const newPlayers = [...players];
+    newPlayers.splice(index, 1);
+    setPlayers(newPlayers);
   }
 
   const updatePlayer = (index: number, updates: Partial<PlayerSetup>) => {
-    const newPlayers = [...players]
+    const newPlayers = [...players];
 
     // If trying to update the color, check if that color is already used
     if (updates.color) {
@@ -434,22 +430,22 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
 
     // Apply updates
-    newPlayers[index] = { ...newPlayers[index], ...updates }
-    setPlayers(newPlayers)
+    newPlayers[index] = { ...newPlayers[index], ...updates };
+    setPlayers(newPlayers);
 
     // Close side dropdown after selection
     if (updates.side) {
       setShowSideDropdown(null);
     }
-  }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     // Basic validation
     if (!gameName || !location || players.some(p => !p.name)) {
-      alert('Please fill in all required fields')
-      return
+      alert('Please fill in all required fields');
+      return;
     }
 
     // Store game setup in localStorage
@@ -457,11 +453,11 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       gameName,
       location,
       players
-    }
-    localStorage.setItem('gameSetup', JSON.stringify(gameSetup))
+    };
+    localStorage.setItem('gameSetup', JSON.stringify(gameSetup));
 
     // Call onGameStart to transition to game timer
-    onGameStart(gameSetup)
+    onGameStart(gameSetup);
   }
 
   const handleSignOut = async () => {
@@ -471,35 +467,35 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const openAddGameModal = () => {
     // If a template is selected and the button should be "Edit"
     if (selectedTemplateId) {
-      const template = gameTemplates.find(t => t.id === selectedTemplateId)
+      const template = gameTemplates.find(t => t.id === selectedTemplateId);
       if (template) {
-        setTemplateName(template.name)
+        setTemplateName(template.name);
         // Convert the sides to the TemplateSide format
         setTemplateSides(template.sides.map(side => ({
           name: side.name,
           icon: side.icon
-        })))
-        setCurrentSide('')
-        setCurrentSideIcon(null)
-        setSideIconPreview(null)
-        setEditingTemplateId(selectedTemplateId)
-        setShowGameModal(true)
+        })));
+        setCurrentSide('');
+        setCurrentSideIcon(null);
+        setSideIconPreview(null);
+        setEditingTemplateId(selectedTemplateId);
+        setShowGameModal(true);
       }
     } else {
       // New template
-      setTemplateName('')
-      setTemplateSides([])
-      setCurrentSide('')
-      setCurrentSideIcon(null)
-      setSideIconPreview(null)
-      setEditingTemplateId(null)
-      setShowGameModal(true)
+      setTemplateName('');
+      setTemplateSides([]);
+      setCurrentSide('');
+      setCurrentSideIcon(null);
+      setSideIconPreview(null);
+      setEditingTemplateId(null);
+      setShowGameModal(true);
     }
-  }
+  };
 
   const handleCloseGameModal = () => {
-    setShowGameModal(false)
-  }
+    setShowGameModal(false);
+  };
 
   const handleSideIconChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -532,7 +528,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       };
       reader.readAsDataURL(file);
     }
-  }
+  };
 
   const handleAddTemplateSide = async () => {
     if (currentSide.trim() === '') return;
@@ -590,11 +586,11 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }
+  };
 
   const handleRemoveTemplateSide = (sideName: string) => {
-    setTemplateSides(templateSides.filter(side => side.name !== sideName))
-  }
+    setTemplateSides(templateSides.filter(side => side.name !== sideName));
+  };
 
   const handleSaveTemplate = async () => {
     if (templateName.trim() === '') {
