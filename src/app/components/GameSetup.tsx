@@ -69,7 +69,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [currentSideIcon, setCurrentSideIcon] = useState<File | null>(null)
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
   const [sideIconPreview, setSideIconPreview] = useState<string | null>(null)
-
+  const [backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Background image upload functionality
   const backgroundImageInputRef = useRef<HTMLInputElement>(null);
