@@ -74,8 +74,9 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Background image upload functionality
-  const backgroundImageInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Background image refs
+  const backgroundImageInputRefs = useRef<{[key: number]: HTMLInputElement | null}>({});
 
   // Fetch game templates on component mount
   useEffect(() => {
@@ -132,13 +133,15 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
   }
 
-  // Initialize backgroundImageInputRefs when players array changes
-  useEffect(() => {
-    // Ensure we have a ref for each player
-    backgroundImageInputRefs.current = players.map((_, i) =>
-      backgroundImageInputRefs.current[i] || null
-    );
-  }, [players]);
+  // Use a different approach for player backgrounds
+  const getBackgroundInputId = (index: number) => `player-bg-input-${index}`;
+
+  const openBackgroundFileDialog = (index: number) => {
+    const fileInput = document.getElementById(getBackgroundInputId(index)) as HTMLInputElement;
+    if (fileInput) {
+      fileInput.click();
+    }
+  };
 
   const handleBackgroundImageChange = (e: React.ChangeEvent<HTMLInputElement>, playerIndex: number) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -173,171 +176,40 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   // Function to upload background image to Supabase
   const uploadPlayerBackground = async (file: File, playerIndex: number) => {
     try {
-      const fileName = `player-bg-${Date.now(                )}
-              </div>
+      const fileName = `player-bg-${Date.now()}-${file.name}`;
 
-              {/* Save Button */}
-              <button
-                type="button"
-                onClick={handleSaveTemplate}
-                className="w-full py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-bold mt-4"
-              >
-                Save Game
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-            ))}
-          </div>
+      const { error } = await supabase.storage
+        .from('player-backgrounds')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            className="w-full py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-bold mt-4"
-          >
-            Start Game
-          </button>
-        </form>
-      </div>
+      if (error) {
+        console.error('Storage upload error:', error);
+        throw error;
+      }
 
-      {/* Add/Edit Game Modal */}
-      {showGameModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md relative">
-            {/* Close Button */}
-            <button
-              onClick={handleCloseGameModal}
-              className="absolute top-4 right-4 p-1 bg-gray-200 rounded-lg hover:bg-gray-300"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+      // Get the public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('player-backgrounds')
+        .getPublicUrl(fileName);
 
-            <h2 className="text-xl font-bold mb-4">
-              {editingTemplateId ? 'Edit Game' : 'Add New Game'}
-            </h2>
+      const backgroundUrl = publicUrlData.publicUrl;
+      console.log('Uploaded background URL:', backgroundUrl);
 
-            <div className="space-y-4">
-              {/* Game Name Input */}
-              <div>
-                <label htmlFor="templateName" className="block mb-2 font-medium">
-                  Name
-                </label>
-                <input
-                  id="templateName"
-                  type="text"
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg"
-                  placeholder="Enter game name"
-                  required
-                />
-              </div>
-
-              {/* Sides Input with Icon Upload */}
-              <div>
-                <label className="block mb-2 font-medium">Sides</label>
-                <div className="space-y-2">
-                  <div className="flex space-x-2 mb-2 relative">
-                    <input
-                      type="text"
-                      value={currentSide}
-                      onChange={(e) => setCurrentSide(e.target.value)}
-                      className="flex-grow px-3 py-2 border rounded-lg"
-                      placeholder="Enter side name"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-2 border rounded-lg bg-gray-100 hover:bg-gray-200"
-                      title="Upload Icon"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                        <circle cx="8.5" cy="8.5" r="1.5" />
-                        <polyline points="21 15 16 10 5 21" />
-                      </svg>
-                    </button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleSideIconChange}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                  </div>
-
-                  {/* Icon Preview */}
-                  {sideIconPreview && (
-                    <div className="flex items-center space-x-2">
-                      <Image
-                        src={sideIconPreview}
-                        alt="Icon Preview"
-                        width={40}
-                        height={40}
-                        className="object-contain border rounded"
-                      />
-                      <span className="text-sm text-gray-600">Icon Preview</span>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleAddTemplateSide}
-                    className="w-full px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                  >
-                    Add Side
-                  </button>
-                </div>
-
-                {/* Side List */}
-                <div className="mt-4 space-y-2">
-                  {templateSides.map((side, idx) => (
-                    <div key={idx} className="flex justify-between items-center p-2 bg-gray-100 rounded-lg">
-                      <div className="flex items-center space-x-2">
-                        {(side.icon || side.previewUrl) && (
-                          <Image
-                            src={side.icon || side.previewUrl || ''}
-                            alt={side.name}
-                            width={24}
-                            height={24}
-                            className="object-contain"
-                            onError={(e) => {
-                              console.error('Error loading image:', side.icon || side.previewUrl);
-                              // Fallback to a placeholder if image fails to load
-                              e.currentTarget.style.display = 'none';
-                              const parent = e.currentTarget.parentElement;
-                              if (parent) {
-                                const letter = document.createElement('span');
-                                letter.className = 'w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold';
-                                letter.innerText = side.name.charAt(0).toUpperCase();
-                                parent.prepend(letter);
-                              }
-                            }}
-                          />
-                        )}
-                        <span>{side.name}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTemplateSide(side.name)}
-                        className="p-1 text-red-500 hover:text-red-700"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>-${file.name}`;
+      // Update player with background image URL
+      const newPlayers = [...players];
+      newPlayers[playerIndex] = {
+        ...newPlayers[playerIndex],
+        backgroundImage: backgroundUrl
+      };
+      setPlayers(newPlayers);
+    } catch (error) {
+      console.error('Error uploading player background:', error);
+      alert('Failed to upload background image. Please try again.');
+    }
+  };
 
       const { error } = await supabase.storage
         .from('player-backgrounds')
