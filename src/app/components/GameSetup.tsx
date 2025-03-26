@@ -61,6 +61,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [showGameModal, setShowGameModal] = useState(false)
   const [gameTemplates, setGameTemplates] = useState<GameTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showSideDropdown, setShowSideDropdown] = useState<number | null>(null);
 
   // State for the Add/Edit Game modal
