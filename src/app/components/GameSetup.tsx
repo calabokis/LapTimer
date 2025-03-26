@@ -847,7 +847,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         <div className="flex items-center space-x-2">
           <button
             type="button"
-            onClick={() => backgroundImageInputRef.current?.click()}
+            onClick={() => backgroundImageInputRefs.current[index]?.click()}
             className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg flex items-center"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
@@ -859,7 +859,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           </button>
           <input
             type="file"
-            ref={backgroundImageInputRef}
+            ref={(el) => backgroundImageInputRefs.current[index] = el}
             onChange={(e) => handleBackgroundImageChange(e, index)}
             accept="image/*"
             className="hidden"
