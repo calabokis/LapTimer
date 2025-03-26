@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import Image from 'next/image';
 
 interface Player {
   id?: string
@@ -529,11 +530,13 @@ const handleEndTurn = async () => {
                         )}
                         {player.side && player.sideIcon && (
                           <div className="ml-2 flex items-center">
-                            <img
-                              src={player.sideIcon}
-                              alt={player.side}
-                              className="w-5 h-5 object-contain"
-                              onError={(e) => {
+                          <Image
+                            src={player.sideIcon}
+                            alt={player.side || ""}
+                            width={20}
+                            height={20}
+                            className="object-contain"
+                            onError={(e) => {
                                 // Fallback if image fails to load
                                 e.currentTarget.style.display = 'none';
                                 const span = document.createElement('span');

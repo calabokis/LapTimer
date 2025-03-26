@@ -61,7 +61,6 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [showGameModal, setShowGameModal] = useState(false)
   const [gameTemplates, setGameTemplates] = useState<GameTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
-  const [showSideDropdown, setShowSideDropdown] = useState<number | null>(null)
 
   // State for the Add/Edit Game modal
   const [templateName, setTemplateName] = useState('')
@@ -73,8 +72,6 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Background image upload functionality
-  const [currentPlayerBackgroundImage, setCurrentPlayerBackgroundImage] = useState<File | null>(null);
-  const [backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
   const backgroundImageInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch game templates on component mount
@@ -524,7 +521,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         errorMessage = JSON.stringify(error);
       }
 
-      {/* Background Image Upload - ADD THIS SECTION */}
+      {/* Background Image Upload */}
       <div className="mt-2">
         <label className="block mb-1 text-sm">
           Player Background
@@ -579,23 +576,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
   }
 
-  // Get available sides for the selected template
-  const getAvailableSides = (): Array<{name: string, icon?: string}> => {
-    if (!selectedTemplateId) return []
-
-    const template = gameTemplates.find(t => t.id === selectedTemplateId)
-    if (!template) return []
-
-    console.log('Available sides for template:', template.sides);
-
-    // Filter out sides with undefined or null names
-    return template.sides.filter(side => !!side.name);
-  }
 
   // Check if a side is already selected by another player
-  const isSideSelected = (sideName: string, currentIndex: number): boolean => {
-    return players.some((player, idx) => player.side === sideName && idx !== currentIndex);
-  }
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 flex items-center justify-center">
@@ -677,8 +659,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
               </button>
             </div>
 
-            // Find this section in your return statement in GameSetup.tsx
-  // This is inside your main return statement, likely in the players.map() function
+
   {players.map((player, index) => (
     <div
       key={index}
