@@ -523,17 +523,6 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       } else if (typeof error === 'object' && error !== null) {
         errorMessage = JSON.stringify(error);
       }
-      {/* Color Selection */}
-      <div>
-        <label className="block mb-1 text-sm">
-          Player Color
-        </label>
-        <div className="flex flex-wrap gap-1">
-          {playerColors.map((color) => {
-            // ... your existing color selection code ...
-          })}
-        </div>
-      </div>
 
       {/* Background Image Upload - ADD THIS SECTION */}
       <div className="mt-2">
@@ -561,6 +550,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             className="hidden"
           />
           {player.backgroundImage && (
+            <>
             <span className="text-xs text-green-600">✓ Image set</span>
             <button
           type="button"
@@ -687,189 +677,130 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
               </button>
             </div>
 
-            {players.map((player, index) => (
-              <div
-              {player.backgroundImage && (
-                <div
-                  className="absolute inset-0 rounded-lg"
-                  style={{ backgroundColor: `${player.color}90` }} // 90 adds 56% opacity
-                />
-              )}
-                key={index}
-                className="mb-4 p-3 border rounded-lg relative"
-                style={{
-                  backgroundColor: player.color,
-                  backgroundImage: player.backgroundImage ? `url(${player.backgroundImage})` : 'none',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center'
+            // Find this section in your return statement in GameSetup.tsx
+  // This is inside your main return statement, likely in the players.map() function
+  {players.map((player, index) => (
+    <div
+      key={index}
+      className="mb-4 p-3 border rounded-lg relative"
+      style={{
+        backgroundColor: player.color,
+        backgroundImage: player.backgroundImage ? `url(${player.backgroundImage})` : 'none',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      }}
+    >
+      {/* Player name input */}
+      <input
+        type="text"
+        value={player.name}
+        onChange={(e) => updatePlayer(index, { name: e.target.value })}
+        className="w-full px-3 py-2 mb-3 border rounded-lg"
+        placeholder={`Player ${index + 1}`}
+        required
+      />
+
+      {/* Side Selection */}
+      <div className="relative">
+        {/* Your existing side selection code */}
+      </div>
+
+      {/* Color Selection */}
+      <div>
+        <label className="block mb-1 text-sm">
+          Player Color
+        </label>
+        <div className="flex flex-wrap gap-1">
+          {playerColors.map((color) => {
+            // Check if this color is already selected by another player
+            const isUsedByOther = players.some(
+              (p, pidx) => p.color === color.value && pidx !== index
+            );
+
+            return (
+              <button
+                key={color.name}
+                type="button"
+                title={color.name}
+                disabled={isUsedByOther}
+                onClick={() => updatePlayer(index, { color: color.value })}
+                className={`w-6 h-6 rounded-full border ${
+                  player.color === color.value ? 'ring-2 ring-blue-500' : ''
+                } ${isUsedByOther ? 'opacity-30 cursor-not-allowed' : ''}`}
+                style={{ backgroundColor: color.value }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Background Image Upload - ADD THIS SECTION */}
+      <div className="mt-2">
+        <label className="block mb-1 text-sm">
+          Player Background
+        </label>
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => backgroundImageInputRef.current?.click()}
+            className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg flex items-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            Set Background
+          </button>
+          <input
+            type="file"
+            ref={backgroundImageInputRef}
+            onChange={(e) => handleBackgroundImageChange(e, index)}
+            accept="image/*"
+            className="hidden"
+          />
+          {player.backgroundImage && (
+            <>
+              <span className="text-xs text-green-600">✓ Image set</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const newPlayers = [...players];
+                  newPlayers[index] = {
+                    ...newPlayers[index],
+                    backgroundImage: undefined
+                  };
+                  setPlayers(newPlayers);
                 }}
+                className="px-2 py-1 text-sm bg-red-100 hover:bg-red-200 text-red-700 rounded-lg"
+                title="Remove background"
               >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
 
-                  {/* Side Selection (Icon-based) - Improved */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowSideDropdown(showSideDropdown === index ? null : index)}
-                      className="h-full px-3 py-2 border rounded-lg bg-white flex items-center justify-center"
-                      style={{ minWidth: '44px' }}
-                    >
-                      {player.side ? (
-                        <div className="flex items-center justify-center">
-                          {player.sideIcon ? (
-                            <Image
-                              src={player.sideIcon}
-                              alt={player.side}
-                              width={24}
-                              height={24}
-                              className="object-contain"
-                              onError={(e) => {
-                                // Show the first letter of side name instead if image fails
-                                e.currentTarget.style.display = 'none';
-                                const parent = e.currentTarget.parentElement;
-                                if (parent) {
-                                  parent.innerHTML = `<span class="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold">${player.side?.charAt(0).toUpperCase() || '?'}</span>`;
-                                }
-                              }}
-                            />
-                          ) : (
-                            <span className="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold">
-                              {player.side.charAt(0).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-gray-500 flex items-center space-x-1">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M12 8v8"></path>
-                            <path d="M8 12h8"></path>
-                          </svg>
-                          <span className="text-sm">Side</span>
-                        </div>
-                      )}
-                    </button>
-
-                    {/* Dropdown for sides - Icon focused */}
-                    {showSideDropdown === index && (
-                      <div className="absolute z-10 w-64 bg-white border rounded-lg shadow-lg left-1/2 transform -translate-x-1/2">
-                        <div className="p-3">
-                          <h4 className="text-sm font-medium mb-2 text-gray-700">Select Side</h4>
-
-                          {/* None option */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              updatePlayer(index, { side: '', sideIcon: undefined });
-                              setShowSideDropdown(null);
-                            }}
-                            className="w-full text-left p-2 mb-2 hover:bg-gray-100 rounded flex items-center"
-                          >
-                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-2">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                              </svg>
-                            </div>
-                            <span>None</span>
-                          </button>
-
-                          {/* Sides grid */}
-                          <div className="grid grid-cols-3 gap-2">
-                            {getAvailableSides().map(side => {
-                              const isDisabled = isSideSelected(side.name, index);
-                              return (
-                                <button
-                                  key={side.name}
-                                  type="button"
-                                  disabled={isDisabled}
-                                  onClick={() => updatePlayer(index, {
-                                    side: side.name,
-                                    sideIcon: side.icon
-                                  })}
-                                  title={side.name}
-                                  className={`p-2 rounded hover:bg-gray-100 flex flex-col items-center ${
-                                    isDisabled ? 'opacity-40 cursor-not-allowed' : ''
-                                  }`}
-                                >
-                                  <div className="w-10 h-10 bg-gray-50 rounded flex items-center justify-center mb-1 border">
-                                    {side.icon ? (
-                                      <Image
-                                        src={side.icon}
-                                        alt={side.name}
-                                        width={32}
-                                        height={32}
-                                        className="object-contain"
-                                        onError={(e) => {
-                                          // Fall back to first letter of side name
-                                          e.currentTarget.style.display = 'none';
-                                          const parent = e.currentTarget.parentElement;
-                                          if (parent) {
-                                            parent.innerHTML = side.name.charAt(0).toUpperCase();
-                                            parent.style.fontSize = '16px';
-                                            parent.style.fontWeight = 'bold';
-                                          }
-                                        }}
-                                      />
-                                    ) : (
-                                      <span className="text-lg font-bold">{side.name.charAt(0).toUpperCase()}</span>
-                                    )}
-                                  </div>
-                                  <span className="text-xs text-center truncate max-w-full">{side.name}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Color Selection */}
-                <div>
-                  <label className="block mb-1 text-sm">
-                    Player Color
-                  </label>
-                  <div className="flex flex-wrap gap-1">
-                    {playerColors.map((color) => {
-                      // Check if this color is already selected by another player
-                      const isUsedByOther = players.some(
-                        (p, pidx) => p.color === color.value && pidx !== index
-                      );
-
-                      return (
-                        <button
-                          key={color.name}
-                          type="button"
-                          title={color.name}
-                          disabled={isUsedByOther}
-                          onClick={() => updatePlayer(index, { color: color.value })}
-                          className={`w-6 h-6 rounded-full border ${
-                            player.color === color.value ? 'ring-2 ring-blue-500' : ''
-                          } ${isUsedByOther ? 'opacity-30 cursor-not-allowed' : ''}`}
-                          style={{ backgroundColor: color.value }}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Remove Player Button */}
-                {players.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemovePlayer(index)}
-                    className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
-                    title="Remove Player"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+      {/* Remove Player Button */}
+      {players.length > 1 && (
+        <button
+          type="button"
+          onClick={() => handleRemovePlayer(index)}
+          className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+          title="Remove Player"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      )}
+    </div>
+  ))}
           </div>
 
           {/* Submit Button */}
