@@ -541,7 +541,7 @@ const handleEndTurn = async () => {
                                 e.currentTarget.style.display = 'none';
                                 const span = document.createElement('span');
                                 span.className = 'w-5 h-5 inline-flex items-center justify-center bg-gray-200 rounded-full text-xs font-bold';
-                                span.innerText = player.side.charAt(0).toUpperCase();
+                                span.innerText = player.side ? player.side.charAt(0).toUpperCase() : '';
                                 e.currentTarget.parentElement?.appendChild(span);
                               }}
                             />
