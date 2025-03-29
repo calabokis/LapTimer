@@ -162,6 +162,35 @@ export default function GameTimer({
     }
   }, [onReset])
 
+  // Load game state from localStorage on component mount
+  useEffect(() => {
+    const savedGameState = localStorage.getItem('gameState')
+    if (savedGameState) {
+      const state = JSON.parse(savedGameState)
+      setPlayers(state.players)
+      setTurns(state.turns)
+      setTurnCounter(state.turnCounter)
+      setGameElapsedTime(state.gameElapsedTime)
+      setTotalElapsedTime(state.totalElapsedTime)
+      setCurrentPlayerIndex(state.currentPlayerIndex)
+      setTurnVPs(state.turnVPs || [])
+    }
+  }, [])
+
+  // Save game state to localStorage whenever it changes
+  useEffect(() => {
+    const gameState = {
+      players,
+      turns,
+      turnCounter,
+      gameElapsedTime,
+      totalElapsedTime,
+      currentPlayerIndex,
+      turnVPs
+    }
+    localStorage.setItem('gameState', JSON.stringify(gameState))
+  }, [players, turns, turnCounter, gameElapsedTime, totalElapsedTime, currentPlayerIndex, turnVPs])
+
   // Timer effect for turn and game time
   useEffect(() => {
     let intervalId: NodeJS.Timeout
@@ -222,75 +251,84 @@ export default function GameTimer({
     if (!isRunning) return;
 
     const currentPlayer = players[currentPlayerIndex];
-    if (currentPlayer.turnVP === 0) return; // Don't record 0 VP entries
+    const vpValue = currentPlayer.turnVP;
+    
+    if (vpValue === 0) return; // Don't record 0 VP entries
 
     // Add this VP to the turnVPs array for this turn
-    setTurnVPs(prev => [...prev, currentPlayer.turnVP]);
+    setTurnVPs(prev => [...prev, vpValue]);
 
     // Update player's total VP (don't allow negative total VP)
     const newPlayers = [...players];
-    const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentPlayer.turnVP);
-    newPlayers[currentPlayerIndex].totalVP = newTotalVP;
-    newPlayers[currentPlayerIndex].turnVP = 0; // Reset turn VP after adding
+    const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + vpValue);
+    newPlayers[currentPlayerIndex] = {
+      ...newPlayers[currentPlayerIndex],
+      totalVP: newTotalVP,
+      turnVP: 0 // Reset turn VP after adding
+    };
     setPlayers(newPlayers);
   }
 
   // Handle end turn
-const handleEndTurn = async () => {
-  const currentPlayer = players[currentPlayerIndex];
+  const handleEndTurn = async () => {
+    const currentPlayer = players[currentPlayerIndex];
+    const currentVP = currentPlayer.turnVP;
 
-  // Add current VP to turnVPs if it's not 0
-  if (currentPlayer.turnVP !== 0) {
-    // Add the current turnVP to the array
-    const updatedTurnVPs = [...turnVPs, currentPlayer.turnVP];
-    setTurnVPs(updatedTurnVPs);
+    // Add current VP to turnVPs if it's not 0
+    if (currentVP !== 0) {
+      // Add the current turnVP to the array
+      const updatedTurnVPs = [...turnVPs, currentVP];
+      setTurnVPs(updatedTurnVPs);
 
-    // Update player's total VP (don't allow negative total VP)
-    const newPlayers = [...players];
-    const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentPlayer.turnVP);
-    newPlayers[currentPlayerIndex].totalVP = newTotalVP;
-    newPlayers[currentPlayerIndex].turnVP = 0;
-    setPlayers(newPlayers);
+      // Update player's total VP (don't allow negative total VP)
+      const newPlayers = [...players];
+      const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentVP);
+      newPlayers[currentPlayerIndex] = {
+        ...newPlayers[currentPlayerIndex],
+        totalVP: newTotalVP,
+        turnVP: 0
+      };
+      setPlayers(newPlayers);
 
-    // Use the updated turnVPs array in the new turn
-    const newTurn = {
-      playerName: currentPlayer.name,
-      side: currentPlayer.side,
-      duration: turnElapsedTime,
-      timestamp: Date.now(),
-      turnVPs: updatedTurnVPs  // Use the updated array including the current turnVP
-    };
+      // Use the updated turnVPs array in the new turn
+      const newTurn = {
+        playerName: currentPlayer.name,
+        side: currentPlayer.side,
+        duration: turnElapsedTime,
+        timestamp: Date.now(),
+        turnVPs: updatedTurnVPs
+      };
 
-    setTurns(prev => [...prev, newTurn]);
-  } else {
-    // Even if there are no current VP changes, we should include previous VP changes from this turn
-    const newTurn = {
-      playerName: currentPlayer.name,
-      side: currentPlayer.side,
-      duration: turnElapsedTime,
-      timestamp: Date.now(),
-      turnVPs: turnVPs  // Use existing turnVPs
-    };
+      setTurns(prev => [...prev, newTurn]);
+    } else if (turnVPs.length > 0) {
+      // Even if there are no current VP changes, we should include previous VP changes from this turn
+      const newTurn = {
+        playerName: currentPlayer.name,
+        side: currentPlayer.side,
+        duration: turnElapsedTime,
+        timestamp: Date.now(),
+        turnVPs: turnVPs
+      };
 
-    setTurns(prev => [...prev, newTurn]);
+      setTurns(prev => [...prev, newTurn]);
+    }
+
+    // Calculate next player index
+    const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
+
+    // Update percentages after each turn, not just at the end of a round
+    setShouldUpdatePercentages(true);
+
+    // Reset turn timer and move to next player
+    setTurnElapsedTime(0);
+    setCurrentPlayerIndex(nextPlayerIndex);
+    setTurnVPs([]); // Clear the turnVPs array for the next player
+
+    // Only increment turn counter when a full round has been completed
+    if (nextPlayerIndex === 0) {
+      setTurnCounter(prev => prev + 1);
+    }
   }
-
-  // Calculate next player index
-  const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
-
-  // Update percentages after each turn, not just at the end of a round
-  setShouldUpdatePercentages(true);
-
-  // Reset turn timer and move to next player
-  setTurnElapsedTime(0);
-  setCurrentPlayerIndex(nextPlayerIndex);
-  setTurnVPs([]);  // Clear the turnVPs array for the next player
-
-  // Only increment turn counter when a full round has been completed
-  if (nextPlayerIndex === 0) {
-    setTurnCounter(prev => prev + 1);
-  }
-}
 
   // Toggle timer
   const toggleTimer = () => {
