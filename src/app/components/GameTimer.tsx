@@ -585,7 +585,7 @@ const handleEndTurn = async () => {
                         <input
                           type="number"
                           value={player.turnVP}
-                          onChange={(e) => updatePlayerTurnVP(index, parseInt(e.target.value) || 0)}
+                          onChange={(e) => updatePlayerTurnVP(index, e.target.value === '' ? 0 : Number(e.target.value))}
                           className="w-16 font-mono text-lg font-bold bg-white border rounded-md px-2"
                           disabled={!isCurrentPlayer}
                         />
