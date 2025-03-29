@@ -143,29 +143,13 @@ export default function GameTimer({
     checkVictoryPoints()
   }, [players, isRunning])
 
-  // Load game setup from localStorage on component mount
-  useEffect(() => {
-    const gameSetup = localStorage.getItem('gameSetup')
-    if (gameSetup) {
-      const { players } = JSON.parse(gameSetup) as GameSetup
-
-      // Initialize players with VP stats
-      const playersWithVP = players.map(player => ({
-        ...player,
-        totalVP: 0,
-        turnVP: 0
-      }))
-
-      setPlayers(playersWithVP)
-    } else {
-      onReset()
-    }
-  }, [onReset])
-
-  // Load game state from localStorage on component mount
+  // Load game state and setup from localStorage on component mount
   useEffect(() => {
     const savedGameState = localStorage.getItem('gameState')
+    const gameSetup = localStorage.getItem('gameSetup')
+
     if (savedGameState) {
+      // If we have saved game state, use that
       const state = JSON.parse(savedGameState)
       setPlayers(state.players)
       setTurns(state.turns)
@@ -174,8 +158,19 @@ export default function GameTimer({
       setTotalElapsedTime(state.totalElapsedTime)
       setCurrentPlayerIndex(state.currentPlayerIndex)
       setTurnVPs(state.turnVPs || [])
+    } else if (gameSetup) {
+      // Only initialize from gameSetup if we don't have saved game state
+      const { players } = JSON.parse(gameSetup) as GameSetup
+      const playersWithVP = players.map(player => ({
+        ...player,
+        totalVP: 0,
+        turnVP: 0
+      }))
+      setPlayers(playersWithVP)
+    } else {
+      onReset()
     }
-  }, [])
+  }, [onReset])
 
   // Save game state to localStorage whenever it changes
   useEffect(() => {
