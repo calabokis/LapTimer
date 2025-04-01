@@ -578,8 +578,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           .insert(templateSides.map(side => ({
             template_id: templateData.id,
             side_name: side.name,
-            icon_url: side.icon || null,
-            background_url: side.backgroundImage || null
+            icon: side.icon || null,
+            background_image: side.backgroundImage || null
           })));
 
         if (sidesError) {
