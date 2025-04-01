@@ -3,15 +3,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import Image from 'next/image';
+import { saveGameStats, saveTurn, updatePlayerTotalVP, loadGameState } from '../../lib/gameOperations'
 
 interface Player {
-  id?: string
+  id: string
   name: string
   side?: string
   sideIcon?: string
   color?: string
   totalVP: number
   turnVP: number
+  game_id: string
 }
 
 interface Turn {
@@ -143,48 +145,156 @@ export default function GameTimer({
     checkVictoryPoints()
   }, [players, isRunning])
 
-  // Load game state and setup from localStorage on component mount
+  // Load game state from Supabase when component mounts
   useEffect(() => {
-    const savedGameState = localStorage.getItem('gameState')
-    const gameSetup = localStorage.getItem('gameSetup')
+    const loadState = async () => {
+      const { gameStats, turns: loadedTurns } = await loadGameState(gameId);
+      
+      if (gameStats) {
+        setTurnCounter(gameStats.current_turn_number);
+        const playerIndex = players.findIndex(p => p.id === gameStats.current_player_id);
+        if (playerIndex !== -1) {
+          setCurrentPlayerIndex(playerIndex);
+        }
+        setTurnElapsedTime(gameStats.turn_elapsed_time);
+        setGameElapsedTime(gameStats.game_elapsed_time);
+        setTotalElapsedTime(gameStats.total_elapsed_time);
+      }
 
-    if (savedGameState) {
-      // If we have saved game state, use that
-      const state = JSON.parse(savedGameState)
-      setPlayers(state.players)
-      setTurns(state.turns)
-      setTurnCounter(state.turnCounter)
-      setGameElapsedTime(state.gameElapsedTime)
-      setTotalElapsedTime(state.totalElapsedTime)
-      setCurrentPlayerIndex(state.currentPlayerIndex)
-      setTurnVPs(state.turnVPs || [])
-    } else if (gameSetup) {
-      // Only initialize from gameSetup if we don't have saved game state
-      const { players } = JSON.parse(gameSetup) as GameSetup
-      const playersWithVP = players.map(player => ({
-        ...player,
-        totalVP: 0,
+      if (loadedTurns) {
+        setTurns(loadedTurns);
+      }
+    };
+
+    if (players.length > 0) {
+      loadState();
+    }
+  }, [gameId, players]);
+
+  // Save game stats periodically
+  useEffect(() => {
+    if (!isRunning || !players[currentPlayerIndex]) return;
+
+    const saveInterval = setInterval(async () => {
+      await saveGameStats(
+        gameId,
+        players[currentPlayerIndex].id,
+        turnCounter,
+        turnElapsedTime,
+        gameElapsedTime,
+        totalElapsedTime
+      );
+    }, 30000); // Save every 30 seconds
+
+    return () => clearInterval(saveInterval);
+  }, [gameId, players, currentPlayerIndex, turnCounter, turnElapsedTime, gameElapsedTime, totalElapsedTime, isRunning]);
+
+  // Handle end turn
+  const handleEndTurn = async () => {
+    const currentPlayer = players[currentPlayerIndex];
+    if (!currentPlayer?.id || !gameId) return;
+
+    const currentVP = currentPlayer.turnVP;
+
+    try {
+      // Add current VP to turnVPs if it's not 0
+      if (currentVP !== 0) {
+        const updatedTurnVPs = [...turnVPs, currentVP];
+        setTurnVPs(updatedTurnVPs);
+
+        // Update player's total VP
+        const newPlayers = [...players];
+        const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentVP);
+        newPlayers[currentPlayerIndex] = {
+          ...newPlayers[currentPlayerIndex],
+          totalVP: newTotalVP,
+          turnVP: 0
+        };
+        setPlayers(newPlayers);
+
+        // Save turn and VP changes to database
+        await saveTurn(
+          gameId,
+          currentPlayer.id,
+          turnCounter,
+          turnElapsedTime,
+          updatedTurnVPs
+        );
+
+        // Update player's total VP in database
+        await updatePlayerTotalVP(currentPlayer.id, newTotalVP);
+      } else if (turnVPs.length > 0) {
+        // Save turn with existing VP changes
+        await saveTurn(
+          gameId,
+          currentPlayer.id,
+          turnCounter,
+          turnElapsedTime,
+          turnVPs
+        );
+      }
+
+      // Calculate next player index
+      const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
+      const nextPlayer = players[nextPlayerIndex];
+      if (!nextPlayer?.id) return;
+
+      // Update game stats
+      await saveGameStats(
+        gameId,
+        nextPlayer.id,
+        turnCounter + (nextPlayerIndex === 0 ? 1 : 0),
+        0, // Reset turn time
+        gameElapsedTime,
+        totalElapsedTime
+      );
+
+      // Update local state
+      setShouldUpdatePercentages(true);
+      setTurnElapsedTime(0);
+      setCurrentPlayerIndex(nextPlayerIndex);
+      setTurnVPs([]);
+
+      if (nextPlayerIndex === 0) {
+        setTurnCounter(prev => prev + 1);
+      }
+    } catch (error) {
+      console.error('Error ending turn:', error);
+      // You might want to show an error message to the user here
+    }
+  };
+
+  // Add VP to the current turn record
+  const handleAddVP = async () => {
+    if (!isRunning) return;
+
+    const currentPlayer = players[currentPlayerIndex];
+    if (!currentPlayer?.id) return;
+
+    const vpValue = currentPlayer.turnVP;
+    if (vpValue === 0) return;
+
+    try {
+      // Add VP to turnVPs array
+      setTurnVPs(prev => [...prev, vpValue]);
+
+      // Update player's total VP
+      const newPlayers = [...players];
+      const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + vpValue);
+      newPlayers[currentPlayerIndex] = {
+        ...newPlayers[currentPlayerIndex],
+        totalVP: newTotalVP,
         turnVP: 0
-      }))
-      setPlayers(playersWithVP)
-    } else {
-      onReset()
-    }
-  }, [onReset])
+      };
+      setPlayers(newPlayers);
 
-  // Save game state to localStorage whenever it changes
-  useEffect(() => {
-    const gameState = {
-      players,
-      turns,
-      turnCounter,
-      gameElapsedTime,
-      totalElapsedTime,
-      currentPlayerIndex,
-      turnVPs
+      // Update player's total VP in database
+      await updatePlayerTotalVP(currentPlayer.id, newTotalVP);
+    } catch (error) {
+      console.error('Error adding VP:', error);
+      // You might want to show an error message to the user here
     }
-    localStorage.setItem('gameState', JSON.stringify(gameState))
-  }, [players, turns, turnCounter, gameElapsedTime, totalElapsedTime, currentPlayerIndex, turnVPs])
+  };
 
   // Timer effect for turn and game time
   useEffect(() => {
@@ -239,90 +349,6 @@ export default function GameTimer({
       turnVP: value
     }
     setPlayers(newPlayers)
-  }
-
-  // Add VP to the current turn record
-  const handleAddVP = () => {
-    if (!isRunning) return;
-
-    const currentPlayer = players[currentPlayerIndex];
-    const vpValue = currentPlayer.turnVP;
-    
-    if (vpValue === 0) return; // Don't record 0 VP entries
-
-    // Add this VP to the turnVPs array for this turn
-    setTurnVPs(prev => [...prev, vpValue]);
-
-    // Update player's total VP (don't allow negative total VP)
-    const newPlayers = [...players];
-    const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + vpValue);
-    newPlayers[currentPlayerIndex] = {
-      ...newPlayers[currentPlayerIndex],
-      totalVP: newTotalVP,
-      turnVP: 0 // Reset turn VP after adding
-    };
-    setPlayers(newPlayers);
-  }
-
-  // Handle end turn
-  const handleEndTurn = async () => {
-    const currentPlayer = players[currentPlayerIndex];
-    const currentVP = currentPlayer.turnVP;
-
-    // Add current VP to turnVPs if it's not 0
-    if (currentVP !== 0) {
-      // Add the current turnVP to the array
-      const updatedTurnVPs = [...turnVPs, currentVP];
-      setTurnVPs(updatedTurnVPs);
-
-      // Update player's total VP (don't allow negative total VP)
-      const newPlayers = [...players];
-      const newTotalVP = Math.max(0, newPlayers[currentPlayerIndex].totalVP + currentVP);
-      newPlayers[currentPlayerIndex] = {
-        ...newPlayers[currentPlayerIndex],
-        totalVP: newTotalVP,
-        turnVP: 0
-      };
-      setPlayers(newPlayers);
-
-      // Use the updated turnVPs array in the new turn
-      const newTurn = {
-        playerName: currentPlayer.name,
-        side: currentPlayer.side,
-        duration: turnElapsedTime,
-        timestamp: Date.now(),
-        turnVPs: updatedTurnVPs
-      };
-
-      setTurns(prev => [...prev, newTurn]);
-    } else if (turnVPs.length > 0) {
-      // Even if there are no current VP changes, we should include previous VP changes from this turn
-      const newTurn = {
-        playerName: currentPlayer.name,
-        side: currentPlayer.side,
-        duration: turnElapsedTime,
-        timestamp: Date.now(),
-        turnVPs: turnVPs
-      };
-
-      setTurns(prev => [...prev, newTurn]);
-    }
-
-    // Calculate next player index
-    const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
-
-    // Update percentages after each turn, not just at the end of a round
-    setShouldUpdatePercentages(true);
-
-    // Reset turn timer and move to next player
-    setTurnElapsedTime(0);
-    setCurrentPlayerIndex(nextPlayerIndex);
-    setTurnVPs([]); // Clear the turnVPs array for the next player
-
-    // Only increment turn counter when a full round has been completed
-    if (nextPlayerIndex === 0) {
-      setTurnCounter(prev => prev + 1);
-    }
   }
 
   // Toggle timer
