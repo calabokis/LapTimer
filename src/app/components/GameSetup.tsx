@@ -25,6 +25,7 @@ interface TemplateSide {
   name: string;
   icon?: string;
   previewUrl?: string | null;
+  backgroundImage?: string;
 }
 
 interface GameSetupProps {
@@ -71,11 +72,12 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [templateSides, setTemplateSides] = useState<TemplateSide[]>([])
   const [currentSide, setCurrentSide] = useState('')
   const [currentSideIcon, setCurrentSideIcon] = useState<File | null>(null)
+  const [currentSideBackground, setCurrentSideBackground] = useState<File | null>(null)
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
   const [sideIconPreview, setSideIconPreview] = useState<string | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [backgroundImagePreview, setBackgroundImagePreview] = useState<string | null>(null);
+  const [sideBackgroundPreview, setSideBackgroundPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
 
   // Use a different approach for player backgrounds
   const getBackgroundInputId = (index: number) => `player-bg-input-${index}`;
@@ -108,7 +110,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         templates.map(async (template) => {
           const { data: sides, error: sidesError } = await supabase
             .from('game_template_sides')
-            .select('side_name, icon_url')
+            .select('side_name, icon_url, background_url')
             .eq('template_id', template.id)
             .order('created_at')
 
@@ -121,7 +123,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             name: template.name,
             sides: sides.map(s => ({
               name: s.side_name,
-              icon: s.icon_url
+              icon: s.icon_url,
+              backgroundImage: s.background_url
             }))
           }
         })
@@ -281,14 +284,21 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     e.preventDefault()
 
     // Basic validation
-    if (!gameName || !location || players.some(p => !p.name)) {
-      alert('Please fill in all required fields')
+    if (!selectedTemplateId || !location || players.some(p => !p.name)) {
+      alert('Please select a game, enter location, and fill in all player names')
+      return
+    }
+
+    // Find the selected template to use its name
+    const selectedTemplate = gameTemplates.find(t => t.id === selectedTemplateId)
+    if (!selectedTemplate) {
+      alert('Please select a valid game')
       return
     }
 
     // Store game setup in localStorage
     const gameSetup = {
-      gameName,
+      gameName: selectedTemplate.name,
       location,
       notes: gameNotes,
       players
@@ -312,11 +322,14 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         // Convert the sides to the TemplateSide format
         setTemplateSides(template.sides.map(side => ({
           name: side.name,
-          icon: side.icon
+          icon: side.icon,
+          backgroundImage: side.backgroundImage
         })))
         setCurrentSide('')
         setCurrentSideIcon(null)
+        setCurrentSideBackground(null)
         setSideIconPreview(null)
+        setSideBackgroundPreview(null)
         setEditingTemplateId(selectedTemplateId)
         setShowGameModal(true)
       }
@@ -326,7 +339,9 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       setTemplateSides([])
       setCurrentSide('')
       setCurrentSideIcon(null)
+      setCurrentSideBackground(null)
       setSideIconPreview(null)
+      setSideBackgroundPreview(null)
       setEditingTemplateId(null)
       setShowGameModal(true)
     }
@@ -369,6 +384,39 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
   }
 
+  const handleSideBackgroundChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+
+      // Check file size
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`File size exceeds the limit (${MAX_FILE_SIZE / 1024 / 1024}MB)`);
+        if (backgroundInputRef.current) {
+          backgroundInputRef.current.value = '';
+        }
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please upload an image file');
+        if (backgroundInputRef.current) {
+          backgroundInputRef.current.value = '';
+        }
+        return;
+      }
+
+      setCurrentSideBackground(file);
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSideBackgroundPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
   const handleAddTemplateSide = async () => {
     if (currentSide.trim() === '') return;
 
@@ -378,7 +426,9 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
 
     let iconUrl = undefined;
+    let backgroundUrl = undefined;
     const previewUrl = sideIconPreview; // Store the current preview
+    const backgroundPreviewUrl = sideBackgroundPreview; // Store the current background preview
 
     // Upload icon if exists
     if (currentSideIcon) {
@@ -411,19 +461,57 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       }
     }
 
+    // Upload background if exists
+    if (currentSideBackground) {
+      try {
+        const fileName = `side-background-${Date.now()}-${currentSideBackground.name}`;
+
+        const { error } = await supabase.storage
+          .from('side-backgrounds')
+          .upload(fileName, currentSideBackground, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (error) {
+          console.error('Storage upload error:', error);
+          throw error;
+        }
+
+        // Get the public URL
+        const { data: publicUrlData } = supabase.storage
+          .from('side-backgrounds')
+          .getPublicUrl(fileName);
+
+        backgroundUrl = publicUrlData.publicUrl;
+        console.log('Uploaded background URL:', backgroundUrl);
+      } catch (error) {
+        console.error('Error uploading background:', error);
+        alert('Failed to upload background. Please try again.');
+        return;
+      }
+    }
+
     // Important: Add the new side BEFORE clearing the input states
     setTemplateSides([...templateSides, {
       name: currentSide.trim(),
       icon: iconUrl,
-      previewUrl: previewUrl
+      backgroundImage: backgroundUrl,
+      previewUrl: previewUrl,
+      backgroundPreviewUrl: backgroundPreviewUrl
     }]);
 
     // NOW reset inputs for the next side
     setCurrentSide('');
     setCurrentSideIcon(null);
+    setCurrentSideBackground(null);
     setSideIconPreview(null);
+    setSideBackgroundPreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+    if (backgroundInputRef.current) {
+      backgroundInputRef.current.value = '';
     }
   }
 
@@ -478,7 +566,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             .insert(templateSides.map(side => ({
               template_id: editingTemplateId,
               side_name: side.name,
-              icon_url: side.icon || null
+              icon_url: side.icon || null,
+              background_url: side.backgroundImage || null
             })));
 
           if (sidesError) {
@@ -511,7 +600,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             .insert(templateSides.map(side => ({
               template_id: template.id,
               side_name: side.name,
-              icon_url: side.icon || null
+              icon_url: side.icon || null,
+              background_url: side.backgroundImage || null
             })));
 
           if (sidesError) {
@@ -585,22 +675,6 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             >
               {selectedTemplateId ? 'Edit' : 'Add'}
             </button>
-          </div>
-
-          {/* Game Name Input */}
-          <div>
-            <label htmlFor="gameName" className="block mb-2 font-medium">
-              Game Name
-            </label>
-            <input
-              id="gameName"
-              type="text"
-              value={gameName}
-              onChange={(e) => setGameName(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg"
-              placeholder="Enter game name"
-              required
-            />
           </div>
 
           {/* Game Notes Input */}
@@ -873,6 +947,25 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                     accept="image/*"
                     className="hidden"
                   />
+                  <button
+                    type="button"
+                    onClick={() => backgroundInputRef.current?.click()}
+                    className="px-3 py-2 border rounded-lg bg-gray-100 hover:bg-gray-200"
+                    title="Upload Background"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                  </button>
+                  <input
+                    type="file"
+                    ref={backgroundInputRef}
+                    onChange={handleSideBackgroundChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
                 </div>
 
                 {/* Icon Preview */}
@@ -886,6 +979,19 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                       className="object-contain border rounded"
                     />
                     <span className="text-sm text-gray-600">Icon Preview</span>
+                  </div>
+                )}
+                {/* Background Preview */}
+                {sideBackgroundPreview && (
+                  <div className="flex items-center space-x-2">
+                    <Image
+                      src={sideBackgroundPreview}
+                      alt="Background Preview"
+                      width={40}
+                      height={40}
+                      className="object-contain border rounded"
+                    />
+                    <span className="text-sm text-gray-600">Background Preview</span>
                   </div>
                 )}
 
@@ -912,6 +1018,27 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                           className="object-contain"
                           onError={(e) => {
                             console.error('Error loading image:', side.icon || side.previewUrl);
+                            // Fallback to a placeholder if image fails to load
+                            e.currentTarget.style.display = 'none';
+                            const parent = e.currentTarget.parentElement;
+                            if (parent) {
+                              const letter = document.createElement('span');
+                              letter.className = 'w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-sm font-bold';
+                              letter.innerText = side.name.charAt(0).toUpperCase();
+                              parent.prepend(letter);
+                            }
+                          }}
+                        />
+                      )}
+                      {(side.backgroundImage || side.backgroundPreviewUrl) && (
+                        <Image
+                          src={side.backgroundImage || side.backgroundPreviewUrl || ''}
+                          alt={side.name}
+                          width={24}
+                          height={24}
+                          className="object-contain"
+                          onError={(e) => {
+                            console.error('Error loading image:', side.backgroundImage || side.backgroundPreviewUrl);
                             // Fallback to a placeholder if image fails to load
                             e.currentTarget.style.display = 'none';
                             const parent = e.currentTarget.parentElement;

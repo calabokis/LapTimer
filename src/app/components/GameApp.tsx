@@ -43,6 +43,8 @@ export default function GameApp() {
     if (!session?.user?.id) return
 
     try {
+      console.log("Starting game creation with:", gameInfo);
+      
       // First, create the game record with total_elapsed_time initialized to 0
       const { data: game, error: gameError } = await supabase
         .from('games')
@@ -57,9 +59,12 @@ export default function GameApp() {
         .select()
         .single()
 
-      if (gameError) throw gameError
+      if (gameError) {
+        console.error("Error creating game:", gameError);
+        throw gameError;
+      }
 
-      console.log("Created game:", game)
+      console.log("Created game:", game);
 
       // Then, create player records (without storing color in the database, but initializing VP)
       const { data: playersData, error: playersError } = await supabase
@@ -74,15 +79,18 @@ export default function GameApp() {
         )
         .select()
 
-      if (playersError) throw playersError
+      if (playersError) {
+        console.error("Error creating players:", playersError);
+        throw playersError;
+      }
 
-      console.log("Created players:", playersData)
+      console.log("Created players:", playersData);
 
       // Set the current game ID
-      setCurrentGameId(game.id)
+      setCurrentGameId(game.id);
     } catch (error) {
-      console.error('Error creating game:', error)
-      alert('Failed to create game. Please try again.')
+      console.error('Error creating game:', error);
+      alert('Failed to create game. Please try again.');
     }
   }
 
