@@ -10,6 +10,7 @@ interface GameTemplate {
   sides: Array<{
     name: string
     icon?: string
+    backgroundImage?: string
   }>
 }
 
@@ -24,8 +25,9 @@ interface PlayerSetup {
 interface TemplateSide {
   name: string;
   icon?: string;
-  previewUrl?: string | null;
   backgroundImage?: string;
+  previewUrl?: string;
+  backgroundPreviewUrl?: string;
 }
 
 interface GameSetupProps {
@@ -73,8 +75,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [currentSideIcon, setCurrentSideIcon] = useState<File | null>(null)
   const [currentSideBackground, setCurrentSideBackground] = useState<File | null>(null)
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
-  const [sideIconPreview, setSideIconPreview] = useState<string | null>(null)
-  const [sideBackgroundPreview, setSideBackgroundPreview] = useState<string | null>(null)
+  const [sideIconPreview, setSideIconPreview] = useState<string | undefined>(undefined)
+  const [sideBackgroundPreviews, setSideBackgroundPreviews] = useState<Record<number, string | undefined>>({})
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
 
@@ -140,33 +142,26 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
     const selectedTemplate = gameTemplates.find(t => t.id === templateId)
     if (selectedTemplate) {
-      // Don't automatically set notes when selecting a template
-      // Let the user enter their own notes
+      const side = selectedTemplate.sides[0]
+      if (side?.backgroundImage) {
+        setSideBackgroundPreviews(prev => ({
+          ...prev,
+          0: side.backgroundImage || undefined
+        }))
+      }
     }
   }
 
-  const handleBackgroundImageChange = (e: React.ChangeEvent<HTMLInputElement>, playerIndex: number) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-
-      // Check file size
-      if (file.size > MAX_FILE_SIZE) {
-        alert(`File size exceeds the limit (${MAX_FILE_SIZE / 1024 / 1024}MB)`);
-        e.target.value = '';
-        return;
-      }
-
-      // Check file type
-      if (!file.type.startsWith('image/')) {
-        alert('Please upload an image file');
-        e.target.value = '';
-        return;
-      }
-
-      // Create preview
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>, playerIndex: number) => {
+    const file = event.target.files?.[0];
+    if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setBackgroundImagePreview(reader.result as string);
+        // Update the preview for the specific side
+        setSideBackgroundPreviews(prev => ({
+          ...prev,
+          [playerIndex]: reader.result as string
+        }));
 
         // Upload to Supabase
         uploadPlayerBackground(file, playerIndex);
@@ -328,8 +323,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         setCurrentSide('')
         setCurrentSideIcon(null)
         setCurrentSideBackground(null)
-        setSideIconPreview(null)
-        setSideBackgroundPreview(null)
+        setSideIconPreview(undefined)
+        setSideBackgroundPreviews({})
         setEditingTemplateId(selectedTemplateId)
         setShowGameModal(true)
       }
@@ -340,8 +335,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       setCurrentSide('')
       setCurrentSideIcon(null)
       setCurrentSideBackground(null)
-      setSideIconPreview(null)
-      setSideBackgroundPreview(null)
+      setSideIconPreview(undefined)
+      setSideBackgroundPreviews({})
       setEditingTemplateId(null)
       setShowGameModal(true)
     }
@@ -411,7 +406,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
-        setSideBackgroundPreview(reader.result as string);
+        setSideBackgroundPreviews(prev => ({ ...prev, 0: reader.result as string }));
       };
       reader.readAsDataURL(file);
     }
@@ -425,10 +420,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       return;
     }
 
-    let iconUrl = undefined;
-    let backgroundUrl = undefined;
+    let iconUrl: string | undefined;
+    let backgroundUrl: string | undefined;
     const previewUrl = sideIconPreview; // Store the current preview
-    const backgroundPreviewUrl = sideBackgroundPreview; // Store the current background preview
+    const backgroundPreviewUrl = sideBackgroundPreviews[0]; // Store the current background preview
 
     // Upload icon if exists
     if (currentSideIcon) {
@@ -493,20 +488,22 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
 
     // Important: Add the new side BEFORE clearing the input states
-    setTemplateSides([...templateSides, {
+    const newSide: TemplateSide = {
       name: currentSide.trim(),
       icon: iconUrl,
       backgroundImage: backgroundUrl,
-      previewUrl: previewUrl,
-      backgroundPreviewUrl: backgroundPreviewUrl
-    }]);
+      previewUrl: previewUrl || undefined,
+      backgroundPreviewUrl: backgroundPreviewUrl || undefined
+    };
+
+    setTemplateSides([...templateSides, newSide]);
 
     // NOW reset inputs for the next side
     setCurrentSide('');
     setCurrentSideIcon(null);
     setCurrentSideBackground(null);
-    setSideIconPreview(null);
-    setSideBackgroundPreview(null);
+    setSideIconPreview(undefined);
+    setSideBackgroundPreviews({});
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -530,6 +527,16 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       if (!userId) {
         throw new Error('User not authenticated');
       }
+
+      const newTemplate = {
+        id: editingTemplateId || '',
+        name: templateName.trim(),
+        sides: templateSides.map(side => ({
+          name: side.name,
+          icon: side.icon || undefined,
+          backgroundImage: side.backgroundImage || undefined
+        }))
+      };
 
       if (editingTemplateId) {
         // Update existing template
@@ -582,7 +589,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         const { data: template, error: templateError } = await supabase
           .from('game_templates')
           .insert({
-            name: templateName,
+            name: templateName.trim(),
             user_id: userId
           })
           .select()
@@ -822,7 +829,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                     <input
                       type="file"
                       id={getBackgroundInputId(index)}
-                      onChange={(e) => handleBackgroundImageChange(e, index)}
+                      onChange={(e) => handleFileChange(e, index)}
                       accept="image/*"
                       className="hidden"
                     />
@@ -982,10 +989,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                   </div>
                 )}
                 {/* Background Preview */}
-                {sideBackgroundPreview && (
+                {sideBackgroundPreviews[0] && (
                   <div className="flex items-center space-x-2">
                     <Image
-                      src={sideBackgroundPreview}
+                      src={sideBackgroundPreviews[0]}
                       alt="Background Preview"
                       width={40}
                       height={40}
