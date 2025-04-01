@@ -133,3 +133,54 @@ export const loadGameState = async (gameId: string) => {
     }
   }
 }
+
+export const createGame = async (gameSetup: {
+  gameName: string;
+  location: string;
+  notes: string;
+  players: Array<{
+    name: string;
+    side?: string;
+    sideIcon?: string;
+    color?: string;
+  }>;
+}) => {
+  try {
+    // First, create the game record
+    const { data: game, error: gameError } = await supabase
+      .from('games')
+      .insert({
+        name: gameSetup.gameName,
+        location: gameSetup.location,
+        notes: gameSetup.notes,
+        status: 'in_progress'
+      })
+      .select()
+      .single();
+
+    if (gameError) {
+      throw gameError;
+    }
+
+    // Then create player records
+    const playerPromises = gameSetup.players.map(player =>
+      supabase
+        .from('players')
+        .insert({
+          game_id: game.id,
+          name: player.name,
+          side: player.side,
+          side_icon: player.sideIcon,
+          color: player.color,
+          total_vp: 0
+        })
+    );
+
+    await Promise.all(playerPromises);
+
+    return { gameId: game.id, error: null };
+  } catch (error) {
+    console.error('Error creating game:', error);
+    return { gameId: null, error };
+  }
+};

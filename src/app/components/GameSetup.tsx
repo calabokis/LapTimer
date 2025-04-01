@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { createGame } from '../../lib/gameOperations'
 import Image from 'next/image'
 import { v4 as uuidv4 } from 'uuid';
 
@@ -37,6 +38,7 @@ interface GameSetupProps {
     location: string
     notes: string
     players: PlayerSetup[]
+    gameId: string
   }) => void
 }
 
@@ -276,33 +278,22 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Basic validation
-    if (!selectedTemplateId || !location || players.some(p => !p.name)) {
-      alert('Please select a game, enter location, and fill in all player names')
+    if (players.length === 0) {
+      alert('Please add at least one player')
       return
     }
 
-    // Find the selected template to use its name
-    const selectedTemplate = gameTemplates.find(t => t.id === selectedTemplateId)
-    if (!selectedTemplate) {
-      alert('Please select a valid game')
+    if (!location) {
+      alert('Please enter a location')
       return
     }
 
-    // Store game setup in localStorage
-    const gameSetup = {
-      gameName: selectedTemplate.name,
-      location,
-      notes: gameNotes,
-      players
-    }
-    localStorage.setItem('gameSetup', JSON.stringify(gameSetup))
-
-    // Call onGameStart to transition to game timer
-    onGameStart(gameSetup)
+    // Call handleStartGame to create the game and transition to timer
+    await handleStartGame()
   }
 
   const handleSignOut = async () => {
@@ -605,6 +596,43 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       alert(`Failed to save game template: ${errorMessage}`);
     }
   }
+
+  const handleStartGame = async () => {
+    const selectedTemplate = gameTemplates.find(t => t.id === selectedTemplateId);
+    const gameSetup = {
+      gameName: selectedTemplate?.name || 'Untitled Game',
+      location: location,
+      notes: gameNotes,
+      players: players.map(player => ({
+        name: player.name,
+        side: player.side,
+        sideIcon: player.sideIcon,
+        color: player.color
+      }))
+    };
+
+    try {
+      const { gameId, error } = await createGame(gameSetup);
+      if (error) {
+        console.error('Failed to create game:', error);
+        alert('Failed to create game. Please try again.');
+        return;
+      }
+
+      if (!gameId) {
+        throw new Error('No game ID returned');
+      }
+
+      // Store game setup in localStorage
+      localStorage.setItem('gameSetup', JSON.stringify(gameSetup));
+
+      // Call onGameStart with the new gameId
+      onGameStart({ ...gameSetup, gameId });
+    } catch (error) {
+      console.error('Error starting game:', error);
+      alert('Failed to start game. Please try again.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 flex items-center justify-center">
