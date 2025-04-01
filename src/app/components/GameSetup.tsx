@@ -615,7 +615,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       const { gameId, error } = await createGame(gameSetup);
       if (error) {
         console.error('Failed to create game:', error);
-        alert(`Failed to create game: ${typeof error === 'object' && error.message ? error.message : error}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        alert(`Failed to create game: ${errorMessage}`);
         return;
       }
 
