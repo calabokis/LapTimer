@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '../../lib/supabase'
 import Image from 'next/image'
 
 interface GameTemplate {
@@ -31,6 +31,7 @@ interface GameSetupProps {
   onGameStart: (gameInfo: {
     gameName: string
     location: string
+    notes: string
     players: PlayerSetup[]
   }) => void
 }
@@ -54,6 +55,7 @@ const MAX_FILE_SIZE = 1 * 1024 * 1024;
 
 export default function GameSetup({ onGameStart }: GameSetupProps) {
   const [gameName, setGameName] = useState('')
+  const [gameNotes, setGameNotes] = useState('')
   const [location, setLocation] = useState('')
   const [players, setPlayers] = useState<PlayerSetup[]>([
     { name: '', side: '', color: playerColors[0].value }
@@ -288,6 +290,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     const gameSetup = {
       gameName,
       location,
+      notes: gameNotes,
       players
     }
     localStorage.setItem('gameSetup', JSON.stringify(gameSetup))
@@ -600,6 +603,20 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
             />
           </div>
 
+          {/* Game Notes Input */}
+          <div>
+            <label htmlFor="gameNotes" className="block mb-2 font-medium">
+              Game Notes
+            </label>
+            <textarea
+              id="gameNotes"
+              value={gameNotes}
+              onChange={(e) => setGameNotes(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg"
+              placeholder="Enter game notes"
+            />
+          </div>
+
           {/* Location Input */}
           <div>
             <label htmlFor="location" className="block mb-2 font-medium">
@@ -721,7 +738,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
                       onClick={() => openBackgroundFileDialog(index)}
                       className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg flex items-center"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                         <circle cx="8.5" cy="8.5" r="1.5" />
                         <polyline points="21 15 16 10 5 21" />
