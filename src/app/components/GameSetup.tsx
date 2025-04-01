@@ -38,8 +38,12 @@ interface GameSetupProps {
     gameName: string
     location: string
     notes: string
-    players: PlayerSetup[]
-    gameId: string
+    players: Array<{
+      name: string
+      side?: string
+      sideIcon?: string
+      color?: string
+    }>
   }) => void
 }
 
@@ -613,27 +617,11 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
     };
 
     try {
-      const { gameId, error } = await createGame(gameSetup);
-      if (error) {
-        console.error('Failed to create game:', error);
-        const errorMessage = error instanceof PostgrestError 
-          ? error.message 
-          : typeof error === 'object' && error !== null 
-            ? JSON.stringify(error) 
-            : String(error);
-        alert(`Failed to create game: ${errorMessage}`);
-        return;
-      }
+      // Store game setup in localStorage first
+      localStorage.setItem('gameSetup', JSON.stringify(gameSetup));
 
-      if (!gameId) {
-        throw new Error('No game ID returned');
-      }
-
-      // Store game setup in localStorage
-      localStorage.setItem('gameSetup', JSON.stringify({ ...gameSetup, gameId }));
-
-      // Call onGameStart with the new gameId
-      onGameStart({ ...gameSetup, gameId });
+      // Call onGameStart to let GameApp handle the game creation
+      onGameStart(gameSetup);
     } catch (error) {
       console.error('Error starting game:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';

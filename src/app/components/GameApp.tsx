@@ -12,6 +12,7 @@ interface PlayerSetup {
   name: string
   side?: string
   color?: string
+  sideIcon?: string
 }
 
 export default function GameApp() {
@@ -45,7 +46,7 @@ export default function GameApp() {
     try {
       console.log("Starting game creation with:", gameInfo);
       
-      // First, create the game record with total_elapsed_time initialized to 0
+      // First, create the game record
       const { data: game, error: gameError } = await supabase
         .from('games')
         .insert({
@@ -53,8 +54,9 @@ export default function GameApp() {
           location: gameInfo.location,
           notes: gameInfo.notes,
           user_id: session.user.id,
-          total_elapsed_time: 0,
-          is_completed: false
+          status: 'in_progress',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .select()
         .single()
@@ -66,25 +68,42 @@ export default function GameApp() {
 
       console.log("Created game:", game);
 
-      // Then, create player records (without storing color in the database, but initializing VP)
-      const { data: playersData, error: playersError } = await supabase
+      // Then, create player records
+      const { error: playersError } = await supabase
         .from('players')
         .insert(
           gameInfo.players.map(player => ({
             game_id: game.id,
             name: player.name,
             side: player.side,
-            total_vp: 0
+            side_icon: player.sideIcon,
+            color: player.color,
+            total_vp: 0,
+            turn_vp: 0
           }))
-        )
-        .select()
+        );
 
       if (playersError) {
         console.error("Error creating players:", playersError);
         throw playersError;
       }
 
-      console.log("Created players:", playersData);
+      // Create initial game stats
+      const { error: statsError } = await supabase
+        .from('game_stats')
+        .insert({
+          game_id: game.id,
+          current_turn_number: 1,
+          turn_elapsed_time: 0,
+          game_elapsed_time: 0,
+          total_elapsed_time: 0,
+          last_updated: new Date().toISOString()
+        });
+
+      if (statsError) {
+        console.error("Error creating game stats:", statsError);
+        throw statsError;
+      }
 
       // Set the current game ID
       setCurrentGameId(game.id);
