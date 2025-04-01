@@ -535,86 +535,32 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
           name: side.name,
           icon: side.icon || undefined,
           backgroundImage: side.backgroundImage || undefined
-        }))
+        })),
+        user_id: userId
       };
 
       if (editingTemplateId) {
         // Update existing template
         console.log('Updating template:', editingTemplateId);
-
         const { error: updateError } = await supabase
           .from('game_templates')
-          .update({
-            name: templateName,
-            updated_at: new Date().toISOString()
-          })
+          .update(newTemplate)
           .eq('id', editingTemplateId);
 
         if (updateError) {
-          console.error('Update template error:', updateError);
+          console.error('Error updating template:', updateError);
           throw updateError;
-        }
-
-        // Delete existing sides
-        const { error: deleteError } = await supabase
-          .from('game_template_sides')
-          .delete()
-          .eq('template_id', editingTemplateId);
-
-        if (deleteError) {
-          console.error('Delete sides error:', deleteError);
-          throw deleteError;
-        }
-
-        // Add new sides if any
-        if (templateSides.length > 0) {
-          const { error: sidesError } = await supabase
-            .from('game_template_sides')
-            .insert(templateSides.map(side => ({
-              template_id: editingTemplateId,
-              side_name: side.name,
-              icon_url: side.icon || null,
-              background_url: side.backgroundImage || null
-            })));
-
-          if (sidesError) {
-            console.error('Insert sides error:', sidesError);
-            throw sidesError;
-          }
         }
       } else {
         // Create new template
         console.log('Creating new template');
-
-        const { data: template, error: templateError } = await supabase
+        const { error: insertError } = await supabase
           .from('game_templates')
-          .insert({
-            name: templateName.trim(),
-            user_id: userId
-          })
-          .select()
-          .single();
+          .insert(newTemplate);
 
-        if (templateError) {
-          console.error('Create template error:', templateError);
-          throw templateError;
-        }
-
-        // Add sides if any
-        if (templateSides.length > 0 && template) {
-          const { error: sidesError } = await supabase
-            .from('game_template_sides')
-            .insert(templateSides.map(side => ({
-              template_id: template.id,
-              side_name: side.name,
-              icon_url: side.icon || null,
-              background_url: side.backgroundImage || null
-            })));
-
-          if (sidesError) {
-            console.error('Insert sides error:', sidesError);
-            throw sidesError;
-          }
+        if (insertError) {
+          console.error('Error creating template:', insertError);
+          throw insertError;
         }
       }
 
