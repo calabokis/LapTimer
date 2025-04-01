@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { createGame } from '../../lib/gameOperations'
 import Image from 'next/image'
 import { v4 as uuidv4 } from 'uuid';
+import { PostgrestError } from '@supabase/supabase-js';
 
 interface GameTemplate {
   id: string
@@ -615,10 +616,11 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       const { gameId, error } = await createGame(gameSetup);
       if (error) {
         console.error('Failed to create game:', error);
-        // Handle Supabase error object
-        const errorMessage = typeof error === 'object' && error !== null
-          ? (error.message || error.details || JSON.stringify(error))
-          : String(error);
+        const errorMessage = error instanceof PostgrestError 
+          ? error.message 
+          : typeof error === 'object' && error !== null 
+            ? JSON.stringify(error) 
+            : String(error);
         alert(`Failed to create game: ${errorMessage}`);
         return;
       }
