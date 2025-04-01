@@ -615,7 +615,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       const { gameId, error } = await createGame(gameSetup);
       if (error) {
         console.error('Failed to create game:', error);
-        alert(`Failed to create game: ${error.message || error}`);
+        alert(`Failed to create game: ${typeof error === 'object' && error.message ? error.message : error}`);
         return;
       }
 
@@ -628,9 +628,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
       // Call onGameStart with the new gameId
       onGameStart({ ...gameSetup, gameId });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error starting game:', error);
-      alert(`Failed to start game: ${error.message || 'Unknown error'}`);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to start game: ${message}`);
     }
   };
 
