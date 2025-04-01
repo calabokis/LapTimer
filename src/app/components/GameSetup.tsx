@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import Image from 'next/image'
+import { v4 as uuidv4 } from 'uuid';
 
 interface GameTemplate {
   id: string
@@ -528,14 +529,9 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         throw new Error('User not authenticated');
       }
 
-      const newTemplate = {
-        id: editingTemplateId || '',
+      const templateData = {
+        id: editingTemplateId || uuidv4(),
         name: templateName.trim(),
-        sides: templateSides.map(side => ({
-          name: side.name,
-          icon: side.icon || undefined,
-          backgroundImage: side.backgroundImage || undefined
-        })),
         user_id: userId
       };
 
@@ -544,23 +540,51 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
         console.log('Updating template:', editingTemplateId);
         const { error: updateError } = await supabase
           .from('game_templates')
-          .update(newTemplate)
+          .update(templateData)
           .eq('id', editingTemplateId);
 
         if (updateError) {
           console.error('Error updating template:', updateError);
           throw updateError;
         }
+
+        // Delete existing sides
+        const { error: deleteError } = await supabase
+          .from('game_template_sides')
+          .delete()
+          .eq('template_id', editingTemplateId);
+
+        if (deleteError) {
+          console.error('Error deleting sides:', deleteError);
+          throw deleteError;
+        }
       } else {
         // Create new template
         console.log('Creating new template');
         const { error: insertError } = await supabase
           .from('game_templates')
-          .insert(newTemplate);
+          .insert(templateData);
 
         if (insertError) {
           console.error('Error creating template:', insertError);
           throw insertError;
+        }
+      }
+
+      // Add sides
+      if (templateSides.length > 0) {
+        const { error: sidesError } = await supabase
+          .from('game_template_sides')
+          .insert(templateSides.map(side => ({
+            template_id: templateData.id,
+            side_name: side.name,
+            icon_url: side.icon || null,
+            background_url: side.backgroundImage || null
+          })));
+
+        if (sidesError) {
+          console.error('Error inserting sides:', sidesError);
+          throw sidesError;
         }
       }
 
