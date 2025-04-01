@@ -149,42 +149,55 @@ export default function GameTimer({
   // Load game state from Supabase when component mounts
   useEffect(() => {
     const loadState = async () => {
-      const gameSetup = localStorage.getItem('gameSetup');
-      if (!gameSetup) {
-        onReset();
-        return;
-      }
+      try {
+        // First, load players from the database
+        const { data: dbPlayers, error: playersError } = await supabase
+          .from('players')
+          .select('*')
+          .eq('game_id', gameId);
 
-      const { players: setupPlayers } = JSON.parse(gameSetup) as GameSetup;
-      const playersWithVP = setupPlayers.map(player => ({
-        ...player,
-        totalVP: 0,
-        turnVP: 0
-      }));
-      setPlayers(playersWithVP);
-
-      const { gameStats, turns: loadedTurns } = await loadGameState(gameId);
-      
-      if (gameStats) {
-        setTurnCounter(gameStats.current_turn_number);
-        const playerIndex = players.findIndex(p => p.id === gameStats.current_player_id);
-        if (playerIndex !== -1) {
-          setCurrentPlayerIndex(playerIndex);
+        if (playersError) {
+          console.error('Error loading players:', playersError);
+          return;
         }
-        setTurnElapsedTime(gameStats.turn_elapsed_time);
-        setGameElapsedTime(gameStats.game_elapsed_time);
-        setTotalElapsedTime(gameStats.total_elapsed_time);
-      }
 
-      if (loadedTurns) {
-        setTurns(loadedTurns);
+        if (!dbPlayers || dbPlayers.length === 0) {
+          console.error('No players found for game:', gameId);
+          return;
+        }
+
+        // Set players from database
+        setPlayers(dbPlayers.map(player => ({
+          id: player.id,
+          name: player.name,
+          side: player.side,
+          sideIcon: player.side_icon,
+          color: player.color,
+          totalVP: player.total_vp || 0,
+          turnVP: player.turn_vp || 0,
+          game_id: player.game_id
+        })));
+
+        // Then load game stats
+        const { gameStats, turns: loadedTurns } = await loadGameState(gameId);
+        
+        if (gameStats) {
+          setTurnCounter(gameStats.current_turn_number);
+          setTurnElapsedTime(gameStats.turn_elapsed_time);
+          setGameElapsedTime(gameStats.game_elapsed_time);
+          setTotalElapsedTime(gameStats.total_elapsed_time);
+        }
+
+        if (loadedTurns) {
+          setTurns(loadedTurns);
+        }
+      } catch (error) {
+        console.error('Error loading game state:', error);
       }
     };
 
-    if (players.length > 0) {
-      loadState();
-    }
-  }, [gameId, players, onReset]);
+    loadState();
+  }, [gameId]);
 
   // Save game stats periodically
   useEffect(() => {
@@ -484,7 +497,6 @@ export default function GameTimer({
         alert('Game saved successfully!');
         // Optionally return to game setup
         if (window.confirm('Return to game setup?')) {
-          localStorage.removeItem('gameSetup');
           onReset();
         }
       } else {
@@ -506,7 +518,6 @@ export default function GameTimer({
         saveGameData(true);
       }
 
-      localStorage.removeItem('gameSetup');
       onReset();
     } else {
       setShowConfirmReset(true);
