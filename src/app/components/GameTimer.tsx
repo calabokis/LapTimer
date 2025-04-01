@@ -32,13 +32,6 @@ interface PlayerStats {
   percentage: number
 }
 
-// Used in loadGameState function
-interface GameSetup {
-  gameName: string
-  location: string
-  players: Player[]
-}
-
 export default function GameTimer({
   gameId,
   onReset
@@ -574,7 +567,7 @@ export default function GameTimer({
             className={`p-2 rounded-lg ${showConfirmEndGame ? 'bg-red-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/>
+              <path d="M2 4l3 12h14l3-12-6 7-4 7-4-7-6-7z"/>
               <path d="M4 19h16"/>
               <path d="M4 22h16"/>
             </svg>
