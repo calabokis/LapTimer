@@ -55,7 +55,6 @@ const playerColors = [
 const MAX_FILE_SIZE = 1 * 1024 * 1024;
 
 export default function GameSetup({ onGameStart }: GameSetupProps) {
-  const [gameName, setGameName] = useState('')
   const [gameNotes, setGameNotes] = useState('')
   const [location, setLocation] = useState('')
   const [players, setPlayers] = useState<PlayerSetup[]>([
@@ -141,7 +140,8 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
 
     const selectedTemplate = gameTemplates.find(t => t.id === templateId)
     if (selectedTemplate) {
-      setGameName(selectedTemplate.name)
+      // Don't automatically set notes when selecting a template
+      // Let the user enter their own notes
     }
   }
 
