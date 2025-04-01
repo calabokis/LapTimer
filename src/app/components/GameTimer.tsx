@@ -32,6 +32,7 @@ interface PlayerStats {
   percentage: number
 }
 
+// Used in loadGameState function
 interface GameSetup {
   gameName: string
   location: string
@@ -148,6 +149,20 @@ export default function GameTimer({
   // Load game state from Supabase when component mounts
   useEffect(() => {
     const loadState = async () => {
+      const gameSetup = localStorage.getItem('gameSetup');
+      if (!gameSetup) {
+        onReset();
+        return;
+      }
+
+      const { players: setupPlayers } = JSON.parse(gameSetup) as GameSetup;
+      const playersWithVP = setupPlayers.map(player => ({
+        ...player,
+        totalVP: 0,
+        turnVP: 0
+      }));
+      setPlayers(playersWithVP);
+
       const { gameStats, turns: loadedTurns } = await loadGameState(gameId);
       
       if (gameStats) {
@@ -169,7 +184,7 @@ export default function GameTimer({
     if (players.length > 0) {
       loadState();
     }
-  }, [gameId, players]);
+  }, [gameId, players, onReset]);
 
   // Save game stats periodically
   useEffect(() => {
