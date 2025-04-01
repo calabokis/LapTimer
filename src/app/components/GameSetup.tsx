@@ -615,7 +615,10 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       const { gameId, error } = await createGame(gameSetup);
       if (error) {
         console.error('Failed to create game:', error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        // Handle Supabase error object
+        const errorMessage = typeof error === 'object' && error !== null
+          ? (error.message || error.details || JSON.stringify(error))
+          : String(error);
         alert(`Failed to create game: ${errorMessage}`);
         return;
       }

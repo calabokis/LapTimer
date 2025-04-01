@@ -150,8 +150,15 @@ export const createGame = async (gameSetup: {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       console.error('Auth error:', userError);
-      return { gameId: null, error: 'User not authenticated' };
+      return { gameId: null, error: userError || 'User not authenticated' };
     }
+
+    console.log('Creating game with:', {
+      name: gameSetup.gameName,
+      location: gameSetup.location,
+      notes: gameSetup.notes,
+      user_id: user.id
+    });
 
     // First, create the game record
     const { data: game, error: gameError } = await supabase
