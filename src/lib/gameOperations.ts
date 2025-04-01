@@ -1,5 +1,4 @@
 import { supabase } from './supabase'
-import type { Game } from './supabase'
 
 export const saveGameStats = async (
   gameId: string,
