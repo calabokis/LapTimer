@@ -2,10 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
-import { createGame } from '../../lib/gameOperations'
 import Image from 'next/image'
 import { v4 as uuidv4 } from 'uuid';
-import { PostgrestError } from '@supabase/supabase-js';
 
 interface GameTemplate {
   id: string
