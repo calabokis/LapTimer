@@ -615,7 +615,7 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       const { gameId, error } = await createGame(gameSetup);
       if (error) {
         console.error('Failed to create game:', error);
-        alert('Failed to create game. Please try again.');
+        alert(`Failed to create game: ${error.message || error}`);
         return;
       }
 
@@ -624,13 +624,13 @@ export default function GameSetup({ onGameStart }: GameSetupProps) {
       }
 
       // Store game setup in localStorage
-      localStorage.setItem('gameSetup', JSON.stringify(gameSetup));
+      localStorage.setItem('gameSetup', JSON.stringify({ ...gameSetup, gameId }));
 
       // Call onGameStart with the new gameId
       onGameStart({ ...gameSetup, gameId });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting game:', error);
-      alert('Failed to start game. Please try again.');
+      alert(`Failed to start game: ${error.message || 'Unknown error'}`);
     }
   };
 

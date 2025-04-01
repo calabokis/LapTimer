@@ -146,6 +146,13 @@ export const createGame = async (gameSetup: {
   }>;
 }) => {
   try {
+    // Get the current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Auth error:', userError);
+      return { gameId: null, error: 'User not authenticated' };
+    }
+
     // First, create the game record
     const { data: game, error: gameError } = await supabase
       .from('games')
@@ -153,18 +160,29 @@ export const createGame = async (gameSetup: {
         name: gameSetup.gameName,
         location: gameSetup.location,
         notes: gameSetup.notes,
-        status: 'in_progress'
+        status: 'in_progress',
+        user_id: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single();
 
     if (gameError) {
-      throw gameError;
+      console.error('Game creation error:', gameError);
+      return { gameId: null, error: gameError };
     }
 
+    if (!game) {
+      console.error('No game data returned');
+      return { gameId: null, error: 'Failed to create game' };
+    }
+
+    console.log('Created game:', game);
+
     // Then create player records
-    const playerPromises = gameSetup.players.map(player =>
-      supabase
+    const playerPromises = gameSetup.players.map(async player => {
+      const { error: playerError } = await supabase
         .from('players')
         .insert({
           game_id: game.id,
@@ -172,11 +190,34 @@ export const createGame = async (gameSetup: {
           side: player.side,
           side_icon: player.sideIcon,
           color: player.color,
-          total_vp: 0
-        })
-    );
+          total_vp: 0,
+          turn_vp: 0
+        });
+
+      if (playerError) {
+        console.error('Player creation error:', playerError);
+        throw playerError;
+      }
+    });
 
     await Promise.all(playerPromises);
+
+    // Create initial game stats
+    const { error: statsError } = await supabase
+      .from('game_stats')
+      .insert({
+        game_id: game.id,
+        current_turn_number: 1,
+        turn_elapsed_time: 0,
+        game_elapsed_time: 0,
+        total_elapsed_time: 0,
+        last_updated: new Date().toISOString()
+      });
+
+    if (statsError) {
+      console.error('Stats creation error:', statsError);
+      return { gameId: null, error: statsError };
+    }
 
     return { gameId: game.id, error: null };
   } catch (error) {
