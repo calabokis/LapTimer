@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { supabase, type Game, type Player as DBPlayer, type Turn as DBTurn, type VPChange, type GameStats } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import Image from 'next/image'
 import { saveGameStats, saveTurn, updatePlayerTotalVP, loadGameState } from '../../lib/gameOperations'
 
@@ -149,7 +149,6 @@ export default function GameTimer({
           .from('players')
           .select('*')
           .eq('game_id', gameId);
->>>>>>> 6dcbe6cee80ac09ab8c0f39f142bcae7de33c7b1
 
         if (playersError) {
           console.error('Error loading players:', playersError);
