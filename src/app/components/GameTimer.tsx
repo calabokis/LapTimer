@@ -1,7 +1,13 @@
 'use client'
 
+import React from 'react'
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 interface Player {
   id?: string
@@ -138,7 +144,21 @@ export default function GameTimer({
   // Load game setup from localStorage on component mount
   useEffect(() => {
     const gameSetup = localStorage.getItem('gameSetup')
-    if (gameSetup) {
+    const gameState = localStorage.getItem('gameState')
+
+    if (gameState) {
+      // Load game state first
+      const state = JSON.parse(gameState)
+      setIsRunning(state.isRunning || false)
+      setTurnCounter(state.turnCounter || 1)
+      setTurnElapsedTime(state.turnElapsedTime || 0)
+      setGameElapsedTime(state.gameElapsedTime || 0)
+      setTotalElapsedTime(state.totalElapsedTime || 0)
+      setCurrentPlayerIndex(state.currentPlayerIndex || 0)
+      setTurns(state.turns || [])
+      setPlayers(state.players || [])
+    } else if (gameSetup) {
+      // Fall back to game setup if no state
       const { players } = JSON.parse(gameSetup) as GameSetup
 
       // Initialize players with VP stats
@@ -153,6 +173,23 @@ export default function GameTimer({
       onReset()
     }
   }, [onReset])
+
+  // Save game state to localStorage whenever it changes
+  useEffect(() => {
+    if (players.length > 0) {
+      const gameState = {
+        isRunning,
+        turnCounter,
+        turnElapsedTime,
+        gameElapsedTime,
+        totalElapsedTime,
+        currentPlayerIndex,
+        turns,
+        players
+      }
+      localStorage.setItem('gameState', JSON.stringify(gameState))
+    }
+  }, [isRunning, turnCounter, turnElapsedTime, gameElapsedTime, totalElapsedTime, currentPlayerIndex, turns, players])
 
   // Timer effect for turn and game time
   useEffect(() => {
