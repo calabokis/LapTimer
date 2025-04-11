@@ -2,18 +2,9 @@
 
 import React from 'react'
 import { useState, useEffect, useMemo, useRef } from 'react'
-<<<<<<< HEAD
-import { createClient } from '@supabase/supabase-js'
-
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseKey)
-=======
-import { supabase } from '@/lib/supabase'
-import Image from 'next/image';
+import { supabase, type Game, type Player as DBPlayer, type Turn as DBTurn, type VPChange, type GameStats } from '../../lib/supabase'
+import Image from 'next/image'
 import { saveGameStats, saveTurn, updatePlayerTotalVP, loadGameState } from '../../lib/gameOperations'
->>>>>>> 6dcbe6cee80ac09ab8c0f39f142bcae7de33c7b1
 
 interface Player {
   id: string
@@ -151,25 +142,6 @@ export default function GameTimer({
 
   // Load game state from Supabase when component mounts
   useEffect(() => {
-<<<<<<< HEAD
-    const gameSetup = localStorage.getItem('gameSetup')
-    const gameState = localStorage.getItem('gameState')
-
-    if (gameState) {
-      // Load game state first
-      const state = JSON.parse(gameState)
-      setIsRunning(state.isRunning || false)
-      setTurnCounter(state.turnCounter || 1)
-      setTurnElapsedTime(state.turnElapsedTime || 0)
-      setGameElapsedTime(state.gameElapsedTime || 0)
-      setTotalElapsedTime(state.totalElapsedTime || 0)
-      setCurrentPlayerIndex(state.currentPlayerIndex || 0)
-      setTurns(state.turns || [])
-      setPlayers(state.players || [])
-    } else if (gameSetup) {
-      // Fall back to game setup if no state
-      const { players } = JSON.parse(gameSetup) as GameSetup
-=======
     const loadState = async () => {
       try {
         // First, load players from the database
